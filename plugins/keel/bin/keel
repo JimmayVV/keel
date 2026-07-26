@@ -18,7 +18,7 @@
  *   keel doctor     verify prerequisites and configuration; exit 1 on problems
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -91,15 +91,31 @@ function have(cmd) {
   return (r.status ?? 1) === 0;
 }
 
+// ── what you get for free ───────────────────────────────────────────────────
+// Stated explicitly because the most common setup mistake is assuming you must
+// configure something. You don't. Everything here works the moment the plugin
+// is installed, with no dependencies, no accounts, and no data leaving the box.
+const INCLUDED = [
+  ["ingest boundary", "web + MCP results marked as data, never instructions"],
+  ["commit hygiene", "blocks attribution trailers you don't want in history"],
+  ["activity log", "records what you asked and concluded, tagged by repo + branch"],
+];
+
 // ── adapters ────────────────────────────────────────────────────────────────
-// Each adapter describes what it needs, how to check it, and how to explain a
-// failure. keel never installs software silently — it tells you the command.
+// Optional, and genuinely optional — not "optional but you'll want it".
+// Each declares what it costs you, because a dependency you didn't understand
+// is the thing you resent later. `egress` is called out separately from
+// `prereq`: the question "does my text leave this machine" deserves its own
+// line rather than being buried in a requirements list.
 
 const ADAPTERS = {
   memory: {
     plugin: "keel-memory",
     title: "Durable notes (Basic Memory)",
     blurb: "Markdown notes on disk, searchable by Claude. No server, no account.",
+    available: true,
+    cost: "uv + Python 3.12 (uv provisions the interpreter for you)",
+    egress: "none — local files and a local index",
     envKey: "KEEL_MEMORY_HOME",
     flag: "memory-home",
     prompt: "Where should notes live?",
@@ -118,12 +134,22 @@ const ADAPTERS = {
   reflect: {
     plugin: "keel-reflect",
     title: "Reflection (Hindsight)",
-    blurb: "Memory that revises its own conclusions. Needs a self-hosted container.",
+    blurb: "Memory that revises its own conclusions over time, in the background.",
+    available: false,
+    reason:
+      "not shipped in v0.1 — the adapter was cut rather than released untested.\n" +
+      "        You almost certainly do not need it: everything keel does for weekly\n" +
+      "        summaries and priorities runs in-session on your existing subscription.\n" +
+      "        Reflection only matters if you want derivation while you are away.",
+    cost: "a self-hosted container, plus an inference provider of your choosing",
+    egress:
+      "NOT zero by default — extraction calls a model. Local (Ollama/LM Studio)\n" +
+      "      is the only genuinely zero-egress configuration.",
     envKey: "KEEL_HINDSIGHT_URL",
     flag: "hindsight-url",
     prompt: "Hindsight base URL?",
     defaultValue: () => "http://localhost:8888",
-    prereq: () => ({ ok: true, what: "a running Hindsight container", fix: "see docs/HINDSIGHT.md" }),
+    prereq: () => ({ ok: false, what: "the keel-reflect adapter (not in v0.1)", fix: "see docs/ROADMAP.md" }),
     validate: (v) => (/^https?:\/\//.test(v ?? "") ? null : "must be an http(s) URL"),
     postSetup: () => null,
   },
@@ -131,18 +157,96 @@ const ADAPTERS = {
 
 // ── commands ────────────────────────────────────────────────────────────────
 
+function activityDir() {
+  return process.env.KEEL_ACTIVITY_DIR?.trim() || join(CONFIG_DIR, "keel", "activity");
+}
+
+/** Every activity record, newest first. Cheap: these files are small and monthly. */
+function readActivity() {
+  const dir = activityDir();
+  if (!existsSync(dir)) return [];
+  const rows = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
+    for (const line of readFileSync(join(dir, f), "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      try { rows.push(JSON.parse(line)); } catch { /* skip a torn line */ }
+    }
+  }
+  return rows.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+}
+
 function cmdStatus() {
   const env = readSettings().env ?? {};
-  console.log(`\n${c.bold("keel")}  ${c.dim(CONFIG_DIR)}\n`);
-  for (const [name, a] of Object.entries(ADAPTERS)) {
+  const acts = readActivity();
+  console.log(`\n${c.bold("keel")}  ${c.dim(CONFIG_DIR)}`);
+
+  // The free tier first, and unconditionally — so nobody concludes keel needs
+  // configuring before it does anything.
+  console.log(`\n  ${c.bold("Working now")} ${c.dim("— no setup, no dependencies, nothing leaves this machine")}`);
+  for (const [name, what] of INCLUDED) {
+    console.log(`    ${c.green("✔")} ${name.padEnd(20)} ${c.dim(what)}`);
+  }
+  console.log(
+    `    ${acts.length ? c.green("✔") : c.dim("·")} ${"records captured".padEnd(20)} ` +
+      c.dim(acts.length ? `${acts.length} in ${activityDir().replace(homedir(), "~")}` : "none yet — run a session"),
+  );
+
+  console.log(`\n  ${c.bold("Optional")} ${c.dim("— genuinely optional; skip all of it and keel still works")}`);
+  for (const [, a] of Object.entries(ADAPTERS)) {
     const val = env[a.envKey];
     const pre = a.prereq();
-    const mark = val ? (pre.ok ? c.green("●") : c.yellow("●")) : c.dim("○");
-    console.log(`  ${mark} ${a.title.padEnd(34)} ${val ? c.dim(val) : c.dim("not configured")}`);
-    if (val && !pre.ok) console.log(`      ${c.yellow(`missing ${pre.what}`)} → ${pre.fix}`);
+    const mark = !a.available ? c.dim("—") : val ? (pre.ok ? c.green("●") : c.yellow("●")) : c.dim("○");
+    const state = !a.available
+      ? c.dim("not in v0.1")
+      : val
+        ? c.dim(val)
+        : c.dim("not configured");
+    console.log(`    ${mark} ${a.title.padEnd(32)} ${state}`);
+    if (a.cost) console.log(`        ${c.dim(`costs:  ${a.cost}`)}`);
+    if (a.egress) console.log(`        ${c.dim(`egress: ${a.egress}`)}`);
+    if (!a.available && a.reason) console.log(`        ${c.dim(a.reason)}`);
+    if (a.available && val && !pre.ok) console.log(`        ${c.yellow(`missing ${pre.what}`)} → ${pre.fix}`);
   }
-  console.log(`\n  ${c.dim("keel setup    wire an adapter")}`);
+
+  console.log(`\n  ${c.dim("keel log      what you've been doing")}`);
+  console.log(`  ${c.dim("keel setup    wire an optional adapter")}`);
   console.log(`  ${c.dim("keel doctor   verify everything")}\n`);
+}
+
+/** Recent activity, grouped by day then project. Raw material for a summary. */
+function cmdLog(argv) {
+  const flags = parseFlags(argv);
+  const days = Number(flags.days ?? 7) || 7;
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+  const rows = readActivity().filter((r) => String(r.ts) >= cutoff && r.kind === "ask");
+
+  if (!rows.length) {
+    console.log(`\n  ${c.dim(`no activity recorded in the last ${days} day(s)`)}`);
+    console.log(`  ${c.dim(`log lives at ${activityDir().replace(homedir(), "~")}`)}\n`);
+    return;
+  }
+
+  console.log(`\n${c.bold(`Last ${days} days`)} ${c.dim(`— ${rows.length} prompts`)}\n`);
+  const byDay = new Map();
+  for (const r of rows) {
+    const day = String(r.ts).slice(0, 10);
+    if (!byDay.has(day)) byDay.set(day, new Map());
+    const proj = r.repo ?? "(no repo)";
+    const list = byDay.get(day).get(proj) ?? [];
+    list.push(r);
+    byDay.get(day).set(proj, list);
+  }
+  for (const [day, projects] of byDay) {
+    console.log(`  ${c.bold(day)}`);
+    for (const [proj, list] of projects) {
+      const branches = [...new Set(list.map((r) => r.branch).filter(Boolean))];
+      console.log(`    ${proj}${branches.length ? c.dim(`  (${branches.join(", ")})`) : ""}  ${c.dim(`${list.length}`)}`);
+      for (const r of list.slice(0, 4)) console.log(`      ${c.dim("·")} ${String(r.text).slice(0, 92)}`);
+      if (list.length > 4) console.log(`      ${c.dim(`… ${list.length - 4} more`)}`);
+    }
+    console.log();
+  }
+  console.log(`  ${c.dim('ask Claude "what did I do last week?" to turn this into a summary')}\n`);
 }
 
 /**
@@ -268,6 +372,9 @@ switch (cmd) {
     break;
   case "setup":
     process.exit((await cmdSetup(process.argv.slice(3))) ? 1 : 0);
+  case "log":
+    cmdLog(process.argv.slice(3));
+    break;
   case "doctor":
     cmdDoctor();
     break;
@@ -276,6 +383,7 @@ switch (cmd) {
 ${c.bold("keel")} — configures third-party memory backends for Claude Code
 
   keel status    what is wired            ${c.dim("(default)")}
+  keel log       what you've been doing   ${c.dim("--days N")}
   keel setup     interactive wiring
   keel doctor    verify; exit 1 on problems
 

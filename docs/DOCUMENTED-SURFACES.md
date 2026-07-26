@@ -50,3 +50,18 @@ the central design decision of this project.
 Claude config directory is checked against it, and `rig doctor` reports a
 violation as a failure, not a warning. If a future feature needs a new surface,
 it gets added here with a docs link, or it does not ship.
+
+## keel's own data
+
+`keel/activity/*.jsonl` under the Claude config directory is **keel's** file, not
+Claude Code's — a monthly, append-only log written by the activity hook. It is
+listed here for completeness rather than as an exception: the allowlist governs
+what keel may touch of *Claude's* state, and this is keel's own.
+
+Its location is deliberately relative to the config directory, so two networks on
+one machine keep separate logs with no extra configuration. `KEEL_ACTIVITY_DIR`
+overrides it; `KEEL_ACTIVITY_OFF=1` disables capture without uninstalling.
+
+The hook writes bounded, single-line records and performs **no model call** —
+hooks capture, skills interpret. `UserPromptSubmit` drops tool timeouts to 30s,
+so anything slow or clever belongs in a skill instead.
