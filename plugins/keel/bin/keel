@@ -39,6 +39,29 @@ const c = {
   red: (s) => `\x1b[31m${s}\x1b[0m`,
 };
 
+/**
+ * Whether an adapter's bridge plugin is actually installed and enabled, via the
+ * documented `claude plugin list --json` surface. An adapter can be fully
+ * configured in settings.json and still unreachable — the env var is read by a
+ * plugin-provided MCP server, and if that plugin isn't enabled the adapter
+ * silently does nothing. Returns null for "unknown" (no claude CLI, bad
+ * output); callers must not report unknown as a problem.
+ */
+let PLUGIN_LIST;
+function pluginState(name) {
+  if (PLUGIN_LIST === undefined) {
+    try {
+      const r = spawnSync("claude", ["plugin", "list", "--json"], { encoding: "utf-8", timeout: 15000 });
+      PLUGIN_LIST = r.status === 0 ? JSON.parse(r.stdout) : null;
+    } catch {
+      PLUGIN_LIST = null;
+    }
+  }
+  if (!Array.isArray(PLUGIN_LIST)) return null;
+  const hit = PLUGIN_LIST.find((p) => String(p.id ?? "").split("@")[0] === name);
+  return { installed: Boolean(hit), enabled: Boolean(hit?.enabled) };
+}
+
 function readSettings() {
   if (!existsSync(SETTINGS)) return {};
   try {
@@ -357,7 +380,16 @@ async function cmdSetup(argv) {
       const changed = writeOwnedEnv({ [a.envKey]: value });
       const note = a.postSetup(value);
       console.log(`  ${c.green("✔")} ${changed ? "written to settings.json" : "already set"}${note ? ` · ${note}` : ""}`);
-      console.log(`  ${c.dim(`enable with: claude plugin enable ${a.plugin}`)}\n`);
+      // The hint has to match reality: `enable` only works on a plugin that is
+      // already installed, and a fresh machine has not installed it yet.
+      const ps = pluginState(a.plugin);
+      if (ps?.enabled) {
+        console.log(`  ${c.dim(`${a.plugin} plugin already enabled`)}\n`);
+      } else if (ps?.installed) {
+        console.log(`  ${c.dim(`enable the bridge: claude plugin enable ${a.plugin}@keel`)}\n`);
+      } else {
+        console.log(`  ${c.dim(`install the bridge: claude plugin install ${a.plugin}@keel`)}\n`);
+      }
     }
 
     console.log(`Done. ${c.dim("Restart Claude Code (or /reload-plugins) to pick up MCP changes.")}\n`);
@@ -388,11 +420,25 @@ function cmdDoctor() {
     if (bad) {
       console.log(`  ${c.red("✖")} ${a.title} — ${bad}: ${val}`);
       problems++;
-    } else if (!pre.ok) {
+      continue;
+    }
+    if (!pre.ok) {
       console.log(`  ${c.red("✖")} ${a.title} — missing ${pre.what}\n      fix: ${pre.fix}`);
       problems++;
+      continue;
+    }
+    // Configured and prerequisites present — but the env var only matters if
+    // the bridge plugin that reads it is installed and enabled.
+    const ps = a.plugin ? pluginState(a.plugin) : null;
+    if (ps && !ps.installed) {
+      console.log(`  ${c.red("✖")} ${a.title} — configured, but the ${a.plugin} plugin is not installed\n      fix: claude plugin install ${a.plugin}@keel`);
+      problems++;
+    } else if (ps && !ps.enabled) {
+      console.log(`  ${c.red("✖")} ${a.title} — configured, but the ${a.plugin} plugin is disabled\n      fix: claude plugin enable ${a.plugin}@keel`);
+      problems++;
     } else {
-      console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}`);
+      const note = ps ? "" : c.dim("  (plugin state unknown — claude CLI unreachable)");
+      console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}${note}`);
     }
   }
 
