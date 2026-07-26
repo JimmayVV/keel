@@ -273,6 +273,24 @@ rm -rf "$CFG.old-$STAMP" "$HOME/.pai-doctrine.old-$STAMP" "$HOME/keel-carryover"
 
 ---
 
+## Config-directory isolation is not account isolation
+
+Worth knowing before you rely on `CLAUDE_CONFIG_DIR` to separate two contexts on
+one machine. Verified on a fresh profile with an empty MCP configuration:
+
+- **Config-scoped servers are isolated.** Anything added via the CLI or declared
+  in `settings.json` / `.mcp.json` does not follow you into another config
+  directory. Correct.
+- **claude.ai connectors are not.** Gmail, Drive, Calendar and similar
+  account-hosted connectors appeared in a profile whose `mcpServers` was empty in
+  both `.claude.json` and `settings.json`. They follow the **login**, not the
+  directory.
+
+So two config directories on one login give you separate *configuration*, not
+separate *reach*. A "work" profile on a personal account can still read personal
+email. If that matters, separate the accounts — which is the case keel's network
+model assumes anyway, since networks are sets of machines rather than profiles.
+
 ## A note on work machines
 
 If this is company hardware, two things are worth settling before you start

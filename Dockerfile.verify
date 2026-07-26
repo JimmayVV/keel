@@ -1,0 +1,16 @@
+# Clean Ubuntu 22.04 — deliberately an LTS box that ships Python 3.10, because
+# that is where the notes adapter's 3.12 floor bites and where "works on my
+# machine" assumptions surface.
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Only what keel claims to require. No bun, no deno, no jq, no uv — if the suite
+# passes here, the requirement list in the README is honest.
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends nodejs git ca-certificates python3 \
+ && apt-get clean
+
+WORKDIR /keel
+COPY . /keel
+ENV KEEL_SRC=/keel
+CMD ["bash", "/keel/scripts/verify-clean.sh"]
