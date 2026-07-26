@@ -142,13 +142,22 @@ const ADAPTERS = {
     envKey: "KEEL_MEMORY_HOME",
     flag: "memory-home",
     prompt: "Where should notes live?",
-    defaultValue: () => join(homedir(), "basic-memory"),
+    // Hidden by default: tool state does not belong as a visible directory in
+    // the user's home. Anyone who wants it visible can say so at the prompt.
+    defaultValue: () => join(homedir(), ".keel", "basic-memory"),
     prereq: () => ({
       ok: have("uvx"),
       what: "uvx (from uv)",
       fix: "curl -LsSf https://astral.sh/uv/install.sh | sh",
     }),
     validate: (v) => (v?.startsWith("/") || v?.startsWith("~") ? null : "must be an absolute path"),
+    // Setup creates the directory, but nothing guarantees it is still there on
+    // doctor day — a synced settings.json arrives on machines that never ran
+    // setup, and users move directories.
+    verify: (v) =>
+      existsSync(v.replace(/^~/, homedir()))
+        ? null
+        : `notes directory does not exist: ${v}\n      fix: mkdir -p '${v}'`,
     postSetup: (v) => {
       mkdirSync(v.replace(/^~/, homedir()), { recursive: true });
       return `notes directory ready at ${v}`;
@@ -424,6 +433,12 @@ function cmdDoctor() {
     }
     if (!pre.ok) {
       console.log(`  ${c.red("✖")} ${a.title} — missing ${pre.what}\n      fix: ${pre.fix}`);
+      problems++;
+      continue;
+    }
+    const drift = a.verify?.(val);
+    if (drift) {
+      console.log(`  ${c.red("✖")} ${a.title} — ${drift}`);
       problems++;
       continue;
     }

@@ -79,6 +79,16 @@ describe("doctor checks the bridge plugin, not just the env var", () => {
     rmSync(w.root, { recursive: true, force: true });
   });
 
+  test("configured but the notes directory is gone -> problem, with mkdir fix", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    rmSync(join(w.root, "notes"), { recursive: true, force: true });
+    const r = doctor(w);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /notes directory does not exist/);
+    assert.match(r.stdout, /mkdir -p/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
   test("claude CLI unreachable -> unknown, not a problem", () => {
     const w = world("[]");
     // Break the stub so `plugin list` fails; doctor must fail soft.
