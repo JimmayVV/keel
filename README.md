@@ -166,8 +166,9 @@ keel doctor    verify prerequisites; exit 1 on problems                 (read-on
 keel setup     the only mutating verb — writes the KEEL_* env keys it owns
 ```
 
-If you'd rather type it yourself, add the plugin's `bin/` to your PATH. You don't
-need to.
+If you'd rather type it yourself, the installer can symlink it into `~/.local/bin`
+for you (step 5, opt-in) — or add the plugin's `bin/` to your PATH by hand. You
+don't need to.
 
 `keel` owns no runtime. It configures other people's tools and gets out of the way — which
 means every write is idempotent and surgical. It touches only the `KEEL_*` keys it owns in

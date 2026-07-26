@@ -179,15 +179,34 @@ fi
 
 # ── 4. install ──────────────────────────────────────────────────────────────
 b $'\n4. Install keel'
-run claude plugin marketplace add "$MARKETPLACE"
-run claude plugin install keel@keel
-[ "$DRY" = 0 ] && ok "installed" || true
+if ! run claude plugin marketplace add "$MARKETPLACE"; then
+  no "could not add marketplace $MARKETPLACE"; exit 1
+fi
+# `add` is a no-op once the marketplace is known — `update` is what actually
+# re-fetches it, which is why a re-run needs both.
+run claude plugin marketplace update || warn "marketplace refresh failed — proceeding with what's on disk"
+if [ "$DRY" = 0 ]; then
+  # Likewise: `install` no-ops if keel is already installed, so a re-run needs
+  # `update` too, or you're stuck on whatever version you first installed.
+  if claude plugin install keel@keel && claude plugin update keel@keel; then
+    ok "installed (latest)"
+  else
+    no "install failed — see errors above"; exit 1
+  fi
+else
+  dim "would run: claude plugin install keel@keel"
+  dim "would run: claude plugin update keel@keel"
+fi
 
 # ── 5. configure ────────────────────────────────────────────────────────────
 b $'\n5. Configure'
+# Prefer the actually-installed cache copy over the marketplace checkout — the
+# two can diverge (e.g. a marketplace add that didn't refresh).
 KEELBIN=""
-for cand in "$CFG"/plugins/*/keel/plugins/keel/bin/keel "$CFG"/plugins/**/keel/bin/keel; do
-  [ -f "$cand" ] && KEELBIN="$cand" && break
+for base in "$CFG/plugins/cache" "$CFG/plugins/marketplaces"; do
+  [ -d "$base" ] || continue
+  found=$(find "$base" -type f -path "*/bin/keel" 2>/dev/null | sort | tail -1)
+  [ -n "$found" ] && KEELBIN="$found" && break
 done
 [ -z "$KEELBIN" ] && [ -f "$(dirname "$0")/../plugins/keel/bin/keel" ] && KEELBIN="$(cd "$(dirname "$0")/.." && pwd)/plugins/keel/bin/keel"
 
@@ -195,6 +214,28 @@ if [ -n "$KEELBIN" ] && [ "$DRY" = 0 ]; then
   node "$KEELBIN" status
   printf '\n'
   if ask "Configure optional adapters now? (interactive)" n; then node "$KEELBIN" setup; fi
+
+  # keel deliberately isn't on your shell's PATH by default — Claude's Bash tool
+  # finds it on its own. Linking it into ~/.local/bin is opt-in, for people who'd
+  # rather type `keel` themselves.
+  printf '\n'
+  LOCALBIN="$HOME/.local/bin"
+  KEELBIN_ABS="$(cd "$(dirname "$KEELBIN")" && pwd)/$(basename "$KEELBIN")"
+  if [ -L "$LOCALBIN/keel" ] && [ "$(readlink -f "$LOCALBIN/keel")" = "$KEELBIN_ABS" ]; then
+    dim "keel already linked: $LOCALBIN/keel"
+  elif ask "Add 'keel' to your PATH ($LOCALBIN)?" n; then
+    run mkdir -p "$LOCALBIN"
+    if [ -e "$LOCALBIN/keel" ] && [ ! -L "$LOCALBIN/keel" ]; then
+      warn "$LOCALBIN/keel exists and isn't a symlink — leaving it alone"
+    else
+      run ln -sf "$KEELBIN_ABS" "$LOCALBIN/keel"
+      ok "linked $LOCALBIN/keel -> $KEELBIN_ABS"
+      case ":$PATH:" in
+        *":$LOCALBIN:"*) : ;;
+        *) warn "$LOCALBIN isn't on your PATH yet — add it: export PATH=\"$LOCALBIN:\$PATH\"" ;;
+      esac
+    fi
+  fi
 else
   dim "run 'keel status' in a new session to see what is active"
 fi
@@ -210,8 +251,13 @@ fi
 
 # ── done ────────────────────────────────────────────────────────────────────
 b $'\nDone'
-dim "Verify:      keel status && keel doctor"
-dim "Prove it:    start a session, ask something, exit, then: keel log"
+if [ -L "$HOME/.local/bin/keel" ]; then
+  dim "Verify:      keel status && keel doctor"
+  dim "Prove it:    start a session, ask something, exit, then: keel log"
+else
+  dim "Verify:      ask Claude to run 'keel status && keel doctor'"
+  dim "Prove it:    start a session, ask something, exit, then ask Claude: keel log"
+fi
 dim "Backup:      $BACKUP"
 [ -d "$CFG.old-$STAMP" ] && dim "Undo reset:  rm -rf '$CFG' && mv '$CFG.old-$STAMP' '$CFG'"
 printf '\n'
