@@ -37,7 +37,7 @@
  */
 
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -108,12 +108,27 @@ function clip(text, max) {
     .slice(0, max);
 }
 
+/**
+ * Log files are scoped by month AND by device.
+ *
+ * This matters the moment you sync the log between machines. Two machines
+ * appending to one `2026-07.jsonl` conflict in git on every single sync, and the
+ * conflict is unresolvable in any useful sense — both sides are correct, they are
+ * just interleaved. Per-device files never conflict, because only one writer ever
+ * touches a given file. Readers glob `*.jsonl`, so nothing downstream changes.
+ */
+function logFile(dir) {
+  const stamp = new Date();
+  const month = `${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, "0")}`;
+  const device = (process.env.KEEL_DEVICE?.trim() || hostname() || "unknown")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "unknown";
+  return join(dir, `${month}-${device}.jsonl`);
+}
+
 function write(record) {
   const dir = activityDir();
   mkdirSync(dir, { recursive: true });
-  const stamp = new Date();
-  const month = `${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, "0")}`;
-  appendFileSync(join(dir, `${month}.jsonl`), JSON.stringify(record) + "\n");
+  appendFileSync(logFile(dir), JSON.stringify(record) + "\n");
 }
 
 const base = () => {
@@ -121,6 +136,7 @@ const base = () => {
   return {
     ts: new Date().toISOString(),
     session: String(input?.session_id ?? "").slice(0, 8),
+    device: (process.env.KEEL_DEVICE?.trim() || hostname() || "unknown").slice(0, 32),
     cwd,
     ...ctx,
   };

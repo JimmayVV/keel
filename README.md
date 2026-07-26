@@ -146,11 +146,28 @@ claude plugin enable keel-memory
 
 ### The CLI
 
+keel adds **no launcher, no wrapper, and no alias.** You invoke `claude`, exactly as
+you would without it. Everything keel contributes — guards, the activity log,
+skills — loads into a plain session.
+
+The `keel` command is a small, read-mostly configuration tool. It lives on the
+**Bash tool's** PATH rather than your shell's, so in practice Claude runs it for
+you:
+
 ```
-keel status    what's wired                    (default)
-keel setup     interactive or flag-driven wiring
-keel doctor    verify prerequisites; exit 1 on problems
+> what did I do last week?     → invokes the week skill
+> check keel status            → Claude runs it and reports
 ```
+
+```
+keel status    what's active, what's optional, what each option costs   (read-only)
+keel log       your activity records; --json feeds the week skill       (read-only)
+keel doctor    verify prerequisites; exit 1 on problems                 (read-only)
+keel setup     the only mutating verb — writes the KEEL_* env keys it owns
+```
+
+If you'd rather type it yourself, add the plugin's `bin/` to your PATH. You don't
+need to.
 
 `keel` owns no runtime. It configures other people's tools and gets out of the way — which
 means every write is idempotent and surgical. It touches only the `KEEL_*` keys it owns in
@@ -175,6 +192,12 @@ whose job is automation but which can only be driven by a human isn't automation
 ---
 
 ## Networks
+
+See [docs/NETWORKING.md](docs/NETWORKING.md) for the practical setup. In short:
+**features need no sync** — every machine installs the same plugin from the same
+marketplace — while **data** (memory, activity, preferences) travels in a private
+repo of your own. The activity log is scoped per month *and per device* precisely
+so it can be synced without ever conflicting.
 
 A **network** is a set of machines sharing one data repo. Your personal machines are one
 network; your work machines are a different one. They are not connected, they don't know
