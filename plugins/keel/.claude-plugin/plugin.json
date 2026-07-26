@@ -1,0 +1,10 @@
+{
+  "name": "keel",
+  "displayName": "Keel",
+  "version": "0.1.0",
+  "description": "Treats web and MCP output as data, not instructions. Blocks commit-message trailers you never want. Ships a CLI that wires third-party memory backends into Claude Code, idempotently.",
+  "author": { "name": "Jimmy Van Veen" },
+  "repository": "https://github.com/JimmayVV/keel",
+  "license": "MIT",
+  "keywords": ["security", "prompt-injection", "memory", "mcp", "guardrails"]
+}

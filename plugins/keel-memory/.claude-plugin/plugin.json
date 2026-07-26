@@ -1,0 +1,10 @@
+{
+  "name": "keel-memory",
+  "displayName": "Keel · Memory (Basic Memory)",
+  "version": "0.1.0",
+  "description": "Durable notes that outlive the context window. Wires Basic Memory as a local MCP server over plain markdown — no container, no service, no account.",
+  "author": { "name": "Jimmy Van Veen" },
+  "license": "MIT",
+  "defaultEnabled": false,
+  "mcpServers": "./.mcp.json"
+}

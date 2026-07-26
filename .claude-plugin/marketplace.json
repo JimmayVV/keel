@@ -1,0 +1,23 @@
+{
+  "name": "keel",
+  "owner": {
+    "name": "Jimmy Van Veen",
+    "url": "https://github.com/JimmayVV"
+  },
+  "metadata": {
+    "description": "A safety and durability layer for Claude Code \u2014 that also wires your memory stack.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "keel",
+      "source": "./plugins/keel",
+      "description": "Guardrails at the ingest boundary, plus the keel CLI for wiring third-party memory backends."
+    },
+    {
+      "name": "keel-memory",
+      "source": "./plugins/keel-memory",
+      "description": "Durable notes adapter \u2014 Basic Memory over local markdown. No server required."
+    }
+  ]
+}

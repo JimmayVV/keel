@@ -1,0 +1,10 @@
+{
+  "name": "keel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A safety and durability layer for Claude Code — that also wires your memory stack.",
+  "scripts": {
+    "test": "node --test plugins/keel/test/guards.test.mjs",
+    "validate": "claude plugin validate . && claude plugin validate ./plugins/keel && claude plugin validate ./plugins/keel-memory && claude plugin validate ./plugins/keel-reflect"
+  }
+}

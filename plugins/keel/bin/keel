@@ -1,0 +1,285 @@
+#!/usr/bin/env node
+/**
+ * keel — sets up and maintains configuration that keel did not author.
+ *
+ * Scope discipline: keel owns no runtime. It does not store memories, serve an
+ * API, or run a daemon. Its entire job is to make somebody else's tool correctly
+ * configured for Claude Code, and to keep it that way across updates.
+ *
+ * That means everything here is idempotent and surgical. keel writes only keys it
+ * owns (the KEEL_* env block in settings.json), preserves everything else byte for
+ * byte where it can, and reports rather than repairs anything ambiguous. Config
+ * files belong to the user; a setup tool that clobbers them is a bug with a nice
+ * interface.
+ *
+ * Commands:
+ *   keel status     what is wired, what is missing, what is stale
+ *   keel setup      interactive wiring of the enabled adapters
+ *   keel doctor     verify prerequisites and configuration; exit 1 on problems
+ */
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, dirname } from "node:path";
+import { spawnSync } from "node:child_process";
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
+
+const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+const SETTINGS = join(CONFIG_DIR, "settings.json");
+
+/** Every env key keel manages. Anything outside this list is not ours to touch. */
+const OWNED_KEYS = ["KEEL_MEMORY_HOME", "KEEL_HINDSIGHT_URL"];
+
+const c = {
+  dim: (s) => `\x1b[2m${s}\x1b[0m`,
+  bold: (s) => `\x1b[1m${s}\x1b[0m`,
+  green: (s) => `\x1b[32m${s}\x1b[0m`,
+  yellow: (s) => `\x1b[33m${s}\x1b[0m`,
+  red: (s) => `\x1b[31m${s}\x1b[0m`,
+};
+
+function readSettings() {
+  if (!existsSync(SETTINGS)) return {};
+  try {
+    return JSON.parse(readFileSync(SETTINGS, "utf-8"));
+  } catch (e) {
+    console.error(c.red(`✖ ${SETTINGS} is not valid JSON — refusing to touch it.`));
+    console.error(`  ${e.message}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Merge owned keys into settings.env, preserving everything else. Backs the file
+ * up once per run before the first write: this is the user's config, and keel is
+ * a guest in it.
+ */
+function writeOwnedEnv(patch) {
+  const settings = readSettings();
+  const before = JSON.stringify(settings);
+
+  settings.env = { ...(settings.env ?? {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (!OWNED_KEYS.includes(k)) throw new Error(`keel does not own the key ${k}`);
+    if (v === null) delete settings.env[k];
+    else settings.env[k] = v;
+  }
+
+  if (JSON.stringify(settings) === before) return false;
+
+  if (existsSync(SETTINGS)) {
+    const backup = `${SETTINGS}.keel-backup`;
+    copyFileSync(SETTINGS, backup);
+  }
+  mkdirSync(dirname(SETTINGS), { recursive: true });
+  writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Is `cmd` on PATH? Passing an args array together with shell:true concatenates
+ * without escaping (Node DEP0190), so each platform gets a real argv instead.
+ */
+function have(cmd) {
+  const safe = /^[A-Za-z0-9._-]+$/.test(cmd);
+  if (!safe) return false;
+  const r =
+    process.platform === "win32"
+      ? spawnSync("where", [cmd], { encoding: "utf-8" })
+      : spawnSync("/bin/sh", ["-c", `command -v ${cmd}`], { encoding: "utf-8" });
+  return (r.status ?? 1) === 0;
+}
+
+// ── adapters ────────────────────────────────────────────────────────────────
+// Each adapter describes what it needs, how to check it, and how to explain a
+// failure. keel never installs software silently — it tells you the command.
+
+const ADAPTERS = {
+  memory: {
+    plugin: "keel-memory",
+    title: "Durable notes (Basic Memory)",
+    blurb: "Markdown notes on disk, searchable by Claude. No server, no account.",
+    envKey: "KEEL_MEMORY_HOME",
+    flag: "memory-home",
+    prompt: "Where should notes live?",
+    defaultValue: () => join(homedir(), "basic-memory"),
+    prereq: () => ({
+      ok: have("uvx"),
+      what: "uvx (from uv)",
+      fix: "curl -LsSf https://astral.sh/uv/install.sh | sh",
+    }),
+    validate: (v) => (v?.startsWith("/") || v?.startsWith("~") ? null : "must be an absolute path"),
+    postSetup: (v) => {
+      mkdirSync(v.replace(/^~/, homedir()), { recursive: true });
+      return `notes directory ready at ${v}`;
+    },
+  },
+  reflect: {
+    plugin: "keel-reflect",
+    title: "Reflection (Hindsight)",
+    blurb: "Memory that revises its own conclusions. Needs a self-hosted container.",
+    envKey: "KEEL_HINDSIGHT_URL",
+    flag: "hindsight-url",
+    prompt: "Hindsight base URL?",
+    defaultValue: () => "http://localhost:8888",
+    prereq: () => ({ ok: true, what: "a running Hindsight container", fix: "see docs/HINDSIGHT.md" }),
+    validate: (v) => (/^https?:\/\//.test(v ?? "") ? null : "must be an http(s) URL"),
+    postSetup: () => null,
+  },
+};
+
+// ── commands ────────────────────────────────────────────────────────────────
+
+function cmdStatus() {
+  const env = readSettings().env ?? {};
+  console.log(`\n${c.bold("keel")}  ${c.dim(CONFIG_DIR)}\n`);
+  for (const [name, a] of Object.entries(ADAPTERS)) {
+    const val = env[a.envKey];
+    const pre = a.prereq();
+    const mark = val ? (pre.ok ? c.green("●") : c.yellow("●")) : c.dim("○");
+    console.log(`  ${mark} ${a.title.padEnd(34)} ${val ? c.dim(val) : c.dim("not configured")}`);
+    if (val && !pre.ok) console.log(`      ${c.yellow(`missing ${pre.what}`)} → ${pre.fix}`);
+  }
+  console.log(`\n  ${c.dim("keel setup    wire an adapter")}`);
+  console.log(`  ${c.dim("keel doctor   verify everything")}\n`);
+}
+
+/**
+ * Flags win, then existing config, then an interactive prompt — and prompting
+ * only happens on a TTY. A setup tool that can only be driven by a human cannot
+ * be scripted, put in CI, or tested, which defeats the point of calling it
+ * automation. Non-interactive with missing values fails loudly instead of
+ * hanging on a read that will never be answered.
+ */
+function parseFlags(argv) {
+  const flags = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith("--")) continue;
+    const [k, inline] = a.slice(2).split("=");
+    flags[k] = inline ?? (argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true");
+  }
+  return flags;
+}
+
+async function cmdSetup(argv) {
+  const flags = parseFlags(argv);
+  const interactive = stdin.isTTY && !flags["non-interactive"];
+  const rl = interactive ? createInterface({ input: stdin, output: stdout }) : null;
+  let missing = 0;
+
+  try {
+    console.log(`\n${c.bold("keel setup")} — configures adapters. Nothing is installed silently.\n`);
+
+    for (const [name, a] of Object.entries(ADAPTERS)) {
+      const env = readSettings().env ?? {};
+      const current = env[a.envKey];
+      const flagValue = flags[a.flag];
+      const skipped = flags["skip"]?.split(",").includes(name);
+
+      console.log(`${c.bold(a.title)}\n  ${c.dim(a.blurb)}`);
+
+      if (skipped) {
+        console.log(c.dim("  skipped (--skip)\n"));
+        continue;
+      }
+
+      const pre = a.prereq();
+      if (!pre.ok) {
+        console.log(`  ${c.yellow(`⚠ ${pre.what} not found`)} — install it, then re-run:\n     ${pre.fix}`);
+      }
+
+      let value = flagValue ?? current;
+
+      if (!value) {
+        if (!interactive) {
+          console.log(`  ${c.dim(`not configured — pass --${a.flag} <value> to wire it`)}\n`);
+          missing++;
+          continue;
+        }
+        const want = (await rl.question(`  Configure it? [y/N] `)).trim().toLowerCase();
+        if (want !== "y" && want !== "yes") {
+          console.log(c.dim("  skipped\n"));
+          continue;
+        }
+        const def = a.defaultValue();
+        value = (await rl.question(`  ${a.prompt} ${c.dim(`[${def}]`)} `)).trim() || def;
+      }
+
+      const bad = a.validate(value);
+      if (bad) {
+        console.log(`  ${c.red(`✖ ${bad}`)} — not written\n`);
+        missing++;
+        continue;
+      }
+
+      const changed = writeOwnedEnv({ [a.envKey]: value });
+      const note = a.postSetup(value);
+      console.log(`  ${c.green("✔")} ${changed ? "written to settings.json" : "already set"}${note ? ` · ${note}` : ""}`);
+      console.log(`  ${c.dim(`enable with: claude plugin enable ${a.plugin}`)}\n`);
+    }
+
+    console.log(`Done. ${c.dim("Restart Claude Code (or /reload-plugins) to pick up MCP changes.")}\n`);
+  } finally {
+    rl?.close();
+  }
+  return missing;
+}
+
+function cmdDoctor() {
+  const env = readSettings().env ?? {};
+  let problems = 0;
+  console.log(`\n${c.bold("keel doctor")}\n`);
+
+  if (!existsSync(SETTINGS)) {
+    console.log(`  ${c.yellow("○")} no settings.json at ${SETTINGS} — run \`keel setup\``);
+    problems++;
+  }
+
+  for (const [, a] of Object.entries(ADAPTERS)) {
+    const val = env[a.envKey];
+    if (!val) {
+      console.log(`  ${c.dim("○")} ${a.title} — not configured ${c.dim("(fine if unused)")}`);
+      continue;
+    }
+    const bad = a.validate(val);
+    const pre = a.prereq();
+    if (bad) {
+      console.log(`  ${c.red("✖")} ${a.title} — ${bad}: ${val}`);
+      problems++;
+    } else if (!pre.ok) {
+      console.log(`  ${c.red("✖")} ${a.title} — missing ${pre.what}\n      fix: ${pre.fix}`);
+      problems++;
+    } else {
+      console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}`);
+    }
+  }
+
+  console.log(problems ? `\n${c.red(`${problems} problem(s)`)}\n` : `\n${c.green("all good")}\n`);
+  process.exit(problems ? 1 : 0);
+}
+
+// ── entry ───────────────────────────────────────────────────────────────────
+const cmd = process.argv[2] ?? "status";
+switch (cmd) {
+  case "status":
+    cmdStatus();
+    break;
+  case "setup":
+    process.exit((await cmdSetup(process.argv.slice(3))) ? 1 : 0);
+  case "doctor":
+    cmdDoctor();
+    break;
+  default:
+    console.log(`
+${c.bold("keel")} — configures third-party memory backends for Claude Code
+
+  keel status    what is wired            ${c.dim("(default)")}
+  keel setup     interactive wiring
+  keel doctor    verify; exit 1 on problems
+
+keel owns no runtime. It configures other people's tools and gets out of the way.
+`);
+    process.exit(cmd === "help" || cmd === "--help" ? 0 : 1);
+}
