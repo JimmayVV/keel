@@ -46,7 +46,7 @@ full table of what's allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | The ingest boundary, commit hygiene, and the `keel` CLI |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `week` skill, and the `keel` CLI |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
@@ -63,6 +63,40 @@ ways to hide instructions from human review.
 Strictly read-only: it never blocks a call and never mutates a result. A guard that can
 break your workflow is a guard you'll eventually disable.
 
+### Security guard
+
+Blocks irreversible catastrophe — recursive deletes of the filesystem root or a
+system directory, `mkfs`, raw writes to block devices, fork bombs — and asks before
+exfiltration-shaped commands: piping a remote script into a shell, uploading a
+credential file over HTTP, copying an ssh key to a remote host, force pushes,
+publishing local content to a gist.
+
+Those exfiltration rules are why this exists rather than deferring to
+`permissions.deny`. The native deny list matches command *prefixes*, which handles
+`Bash(rm -rf /:*)` perfectly and cannot express "curl with a credential file as its
+payload". Run both — the deny list is a cheaper, earlier stop where it applies.
+
+It distinguishes **data from code in a heredoc**. Writing a Dockerfile that happens
+to contain a recursive delete is file content and passes; the same text piped into
+`bash` is code and is still blocked. That distinction is the reason this was ported
+rather than copied — the original scanned the whole command string and blocked you
+for writing documentation.
+
+Policy ships inside the plugin, so it cannot drift from the code that reads it, and
+it **fails closed**: an unreadable or invalid policy blocks Bash rather than
+silently allowing everything. `KEEL_GUARD_OFF=1` is the deliberate escape hatch.
+
+### Activity log
+
+Records what you asked and what was concluded, tagged by repo and branch — so the
+research, review, and dead-end work that never produces a commit is still
+recoverable weeks later. `keel log` shows it; the `week` skill turns it into a
+summary you can send.
+
+Captured from documented hook payloads (`UserPromptSubmit` and `Stop`), never by
+parsing transcripts. `KEEL_ACTIVITY_OFF=1` disables it; `KEEL_ACTIVITY_DIR`
+relocates it.
+
 ### Commit hygiene
 
 Blocks unwanted attribution trailers in commit messages. Whether you want those in your git
@@ -76,14 +110,32 @@ error, and only inspects actual `git commit` invocations, so `git log --grep` st
 
 ## Install
 
+One command, and it walks the whole thing — dependency check, backup, optional
+reset to vanilla, install, then the configuration TUIs:
+
+```sh
+git clone https://github.com/JimmayVV/keel && bash keel/scripts/install.sh
+```
+
+Two promises it keeps. It **never runs `sudo`**: where a system package is missing
+it prints the exact command and waits for you to run it yourself. And it **never
+deletes**: the reset step is a `mv`, and it prints the one-line undo before doing
+anything. Every step is skippable, and the script is safe to re-run.
+
+```sh
+bash scripts/install.sh --dry-run    # print the plan, change nothing
+bash scripts/install.sh --no-reset   # install alongside an existing setup
+```
+
+Or by hand:
+
 ```sh
 /plugin marketplace add JimmayVV/keel
 /plugin install keel@keel
 ```
 
-Replacing an existing customised harness? See
-[docs/FRESH-START.md](docs/FRESH-START.md) — a reversible, move-aside procedure
-that preserves your login and your accumulated per-project memory.
+For the manual reset with every step explained, see
+[docs/FRESH-START.md](docs/FRESH-START.md).
 
 Then wire the notes adapter, if you want it:
 

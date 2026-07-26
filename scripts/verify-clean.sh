@@ -64,7 +64,9 @@ grep -q '"repo":null' "$KEEL_ACTIVITY_DIR"/*.jsonl 2>/dev/null \
   && ok "records repo:null rather than guessing" || bad "expected repo:null outside a repo"
 
 # Inside a real repo, attribution must appear.
-R=/tmp/repo; rm -rf "$R"; mkdir -p "$R"; cd "$R"
+R=/tmp/repo; W=/tmp/wt
+git -C "$R" worktree remove --force "$W" 2>/dev/null || rm -rf "$W"
+rm -rf "$R"; mkdir -p "$R"; cd "$R"
 git init -q . && git -c user.email=a@b -c user.name=A commit -q --allow-empty -m init 2>/dev/null
 printf '{"hook_event_name":"UserPromptSubmit","session_id":"s2","cwd":"%s","prompt":"investigating the failing release gate"}' "$R" \
   | node "$KEEL/hooks/activity-log.mjs" >/dev/null 2>&1
@@ -72,8 +74,8 @@ grep -q '"repo":"repo"' "$KEEL_ACTIVITY_DIR"/*.jsonl 2>/dev/null \
   && ok "attributes work to the repo" || bad "repo attribution failed"
 
 # A linked worktree must group under its parent project, not look like a new one.
-git -C "$R" worktree add -q -b wt /tmp/wt 2>/dev/null
-printf '{"hook_event_name":"UserPromptSubmit","session_id":"s3","cwd":"/tmp/wt","prompt":"testing the worktree grouping behaviour"}' \
+git -C "$R" worktree add -q -b wt "$W" 2>/dev/null || { echo "  (worktree setup failed)"; }
+printf '{"hook_event_name":"UserPromptSubmit","session_id":"s3","cwd":"'"$W"'","prompt":"testing the worktree grouping behaviour"}' \
   | node "$KEEL/hooks/activity-log.mjs" >/dev/null 2>&1
 python3 - <<'PY' && ok "worktree groups under parent project" || bad "worktree did not group under parent"
 import glob, json, sys, os

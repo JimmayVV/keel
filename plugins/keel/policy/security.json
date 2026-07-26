@@ -1,0 +1,112 @@
+{
+  "_comment": [
+    "Security policy for keel's guard hook. Ships WITH the plugin so it cannot go",
+    "missing or drift from the code that reads it \u2014 the failure mode of keeping",
+    "policy in a separate tree.",
+    "Patterns are JS regex strings, matched case-insensitively against the Bash",
+    "command AFTER heredoc-data removal and env-prefix stripping.",
+    "Tiers: blocked = exit 2 (hard stop) | confirm = ask the user | alert = log and allow.",
+    "Derived from PAI's patterns.yaml (Daniel Miessler's PAI, MIT), converted",
+    "mechanically rather than retyped."
+  ],
+  "version": "1.0",
+  "bash": {
+    "blocked": [
+      {
+        "pattern": ":\\(\\)\\s*\\{\\s*:\\s*\\|\\s*:?\\s*&?\\s*\\}\\s*;\\s*:",
+        "reason": "Fork bomb (self-replicating process exhaustion)"
+      },
+      {
+        "pattern": "\\brm\\s+(?:-[a-zA-Z]+\\s+)*-[a-zA-Z]*r[a-zA-Z]*\\s+(?:-[a-zA-Z]+\\s+)*(?:/|~|\\$HOME|/\\*|~/\\*)(?:\\s|;|&|\\||$)",
+        "reason": "Recursive delete of filesystem root or home directory"
+      },
+      {
+        "pattern": "\\brm\\s+(?:-[a-zA-Z]+\\s+)*-[a-zA-Z]*r[a-zA-Z]*\\s+(?:-[a-zA-Z]+\\s+)*/(?:etc|usr|var|bin|boot|lib|sbin|sys|proc|dev|root)(?:\\s|/|;|&|\\||$)",
+        "reason": "Recursive delete of a critical system directory"
+      },
+      {
+        "pattern": "\\bmkfs(?:\\.\\w+)?\\s+",
+        "reason": "Filesystem format (destroys all data on target)"
+      },
+      {
+        "pattern": "\\bdd\\b[^\\n]*\\bof=/dev/(?:sd|nvme|hd|vd|mmcblk|disk|xvd)",
+        "reason": "Raw write to a block device (disk destruction)"
+      },
+      {
+        "pattern": "(?:^|\\s)>\\s*/dev/(?:sd|nvme|hd|vd|mmcblk)",
+        "reason": "Shell redirect overwriting a raw block device"
+      },
+      {
+        "pattern": "\\bwipefs\\b",
+        "reason": "Wipes filesystem signatures from a device"
+      }
+    ],
+    "confirm": [
+      {
+        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:sudo\\s+)?(?:sh|bash|zsh|python[0-9.]*|perl)\\b",
+        "reason": "Piping a remote script directly into a shell (remote code execution)"
+      },
+      {
+        "pattern": "\\b(?:curl|wget)\\b[^\\n]*(?:-d|--data|--data-binary|-T|--upload-file|-F|--form)[^\\n]*(?:\\.env|id_rsa|id_ed25519|\\.aws/credentials|\\.ssh/|secret|token|password|\\.pem)",
+        "reason": "Possible credential exfiltration over HTTP"
+      },
+      {
+        "pattern": "\\b(?:cat|less|head|tail|base64)\\b[^\\n]*(?:\\.env|id_rsa|id_ed25519|\\.aws/credentials|\\.ssh/id_|\\.pem)[^\\n]*\\|[^\\n]*\\b(?:curl|wget|nc|ncat|socat)\\b",
+        "reason": "Reading a secret file and piping it to the network"
+      },
+      {
+        "pattern": "\\b(?:scp|rsync)\\b[^\\n]*(?:\\.env|id_rsa|\\.aws/credentials|\\.ssh/id_)[^\\n]*\\s\\S+@\\S+:",
+        "reason": "Copying secrets to a remote host"
+      },
+      {
+        "pattern": "\\bgit\\s+push\\b[^\\n]*(?:--force\\b|(?:^|\\s)-f\\b)",
+        "reason": "Force-push rewrites remote history (protect shared and protected remotes)"
+      },
+      {
+        "pattern": "\\bchmod\\s+(?:-[a-zA-Z]+\\s+)*0?777\\b",
+        "reason": "World-writable permissions (recursive if -R)"
+      },
+      {
+        "pattern": "\\b(?:curl|wget)\\b[^\\n]*(?:-T\\s|--upload-file\\s|--data-binary\\s+@|--data\\s+@|--data-raw\\s+@|-d\\s+@|-F\\s+[^\\n]*@)",
+        "reason": "Uploading a local file over HTTP (possible data exfiltration)"
+      },
+      {
+        "pattern": "\\bgh\\s+(?:gist\\s+create|pr\\s+create)\\b",
+        "reason": "Publishing local content to GitHub (gist/PR) \u2014 confirm intended"
+      },
+      {
+        "pattern": "\\b(?:nc|ncat|socat)\\b[^\\n]*\\b(?:-e|--exec|[0-9]{2,5})\\b",
+        "reason": "Netcat/socat to a host (reverse shell / data channel)"
+      },
+      {
+        "pattern": "\\b(?:curl|wget)\\b[^\\n]*(?:\\$\\(|`)[^\\n]*(?:\\.env|id_rsa|id_ed25519|credentials|\\.pem|token|secret)",
+        "reason": "Sending command-substituted secret material to a URL (exfiltration)"
+      },
+      {
+        "pattern": "\\bnpx\\s+(?:-y\\s+)?skills\\s+add\\b",
+        "reason": "Installing a third-party Claude skill \u2014 review the source before allowing"
+      }
+    ],
+    "alert": [
+      {
+        "pattern": "\\bsudo\\b",
+        "reason": "Elevated privileges requested"
+      }
+    ]
+  },
+  "paths": {
+    "zeroAccess": [],
+    "readOnly": [],
+    "confirmWrite": [
+      "~/.ssh/*",
+      "~/.aws/*",
+      "~/.gnupg/*",
+      "~/.claude/settings.json"
+    ],
+    "noDelete": [
+      "~/.ssh/*",
+      "~/.aws/*",
+      "~/.claude/settings.json"
+    ]
+  }
+}
