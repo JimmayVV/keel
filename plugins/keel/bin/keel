@@ -218,7 +218,37 @@ function cmdLog(argv) {
   const flags = parseFlags(argv);
   const days = Number(flags.days ?? 7) || 7;
   const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
-  const rows = readActivity().filter((r) => String(r.ts) >= cutoff && r.kind === "ask");
+  const all = readActivity().filter((r) => String(r.ts) >= cutoff);
+  const rows = all.filter((r) => r.kind === "ask");
+
+  // --json is what the `week` skill consumes. Emitting the repo roster alongside
+  // the records saves the skill from guessing which checkouts to run git in.
+  if (flags.json) {
+    const repos = {};
+    for (const r of all) {
+      if (!r.repo) continue;
+      const e = (repos[r.repo] ??= { repo: r.repo, cwds: new Set(), branches: new Set(), prompts: 0 });
+      if (r.cwd) e.cwds.add(r.cwd);
+      if (r.branch) e.branches.add(r.branch);
+      if (r.kind === "ask") e.prompts++;
+    }
+    console.log(JSON.stringify({
+      since: cutoff,
+      days,
+      counts: { asks: rows.length, records: all.length },
+      repos: Object.values(repos).map((e) => ({
+        repo: e.repo,
+        checkouts: [...e.cwds],
+        branches: [...e.branches],
+        prompts: e.prompts,
+      })),
+      records: all.map(({ ts, kind, repo, branch, worktree, text }) => ({
+        ts, kind, repo, branch, worktree,
+        text: text ? String(text).slice(0, 600) : undefined,
+      })),
+    }, null, 2));
+    return;
+  }
 
   if (!rows.length) {
     console.log(`\n  ${c.dim(`no activity recorded in the last ${days} day(s)`)}`);
@@ -383,7 +413,7 @@ switch (cmd) {
 ${c.bold("keel")} — configures third-party memory backends for Claude Code
 
   keel status    what is wired            ${c.dim("(default)")}
-  keel log       what you've been doing   ${c.dim("--days N")}
+  keel log       what you've been doing   ${c.dim("--days N [--json]")}
   keel setup     interactive wiring
   keel doctor    verify; exit 1 on problems
 
