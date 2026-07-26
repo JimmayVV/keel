@@ -81,6 +81,10 @@ error, and only inspects actual `git commit` invocations, so `git log --grep` st
 /plugin install keel@keel
 ```
 
+Replacing an existing customised harness? See
+[docs/FRESH-START.md](docs/FRESH-START.md) — a reversible, move-aside procedure
+that preserves your login and your accumulated per-project memory.
+
 Then wire the notes adapter, if you want it:
 
 ```sh
