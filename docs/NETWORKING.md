@@ -5,7 +5,7 @@ Two separate problems that people usually conflate. Solve them separately.
 | | Direction | Mechanism | Effort |
 |---|---|---|---|
 | **Features** — the plugin, hooks, skills, policy | repo → every machine | the plugin marketplace | **already done** |
-| **Data** — your memory, activity, preferences | machine ↔ machine | a private git repo | some setup |
+| **Data** — activity, instructions, preferences | machine ↔ machine | a private git repo | some setup |
 
 ---
 
@@ -32,7 +32,10 @@ between them — which is exactly why this half needs no thought.
 
 ## Data: what's worth syncing, and what fights back
 
-Four kinds of local state, with very different behaviour under sync.
+Four kinds of local state, with very different behaviour under sync. With
+auto-memory left machine-local (below), everything you *do* sync is conflict-free
+by construction — which is the whole reason to accept two stores rather than
+force one.
 
 ### 1. Activity log — safe to sync
 
@@ -58,27 +61,41 @@ One caveat: `settings.json` can hold machine-specific values (paths, an activity
 directory override). Keep those in `settings.local.json` — which is
 gitignored-by-convention and not synced — so the shared file stays portable.
 
-### 3. Auto-memory — syncable, but it will conflict
+### 3. Auto-memory — leave it machine-local (recommended)
 
 `<config>/projects/<repo>/memory/`
 
-Worth being straight about this one, because it's the only genuinely awkward part.
-Anthropic documents auto-memory as machine-local and does not sync it. You *can*
-put it in git, and it's the most valuable thing you'd sync — accumulated build
-quirks and decisions per repository. But Claude rewrites it on every machine, so
-conflicts are inevitable.
+The tempting move is to force this into git, because it's the richest thing on the
+machine. Don't. Anthropic documents it as machine-local, Claude rewrites it on
+every machine, and `MEMORY.md` — the index both machines rewrite — conflicts
+constantly. You'd be fighting the tool's design for the rest of its life.
 
-The good news is where they concentrate. **Topic files rarely conflict** — they're
-separate files about separate subjects, and two machines usually touch different
-ones. **`MEMORY.md` conflicts often**, because both machines rewrite the index.
+**The better framing is that two memory stores are correct, because they hold
+different kinds of knowledge:**
 
-And `MEMORY.md` conflicts resolve trivially: it's a list of one-line pointers, so
-the correct resolution is nearly always the **union of both sides** with duplicates
-dropped. That's a ten-second manual fix, not a merge nightmare.
+| Store | Holds | Example |
+|---|---|---|
+| **Auto-memory** (machine-local, automatic) | facts about *this machine* | "npm install from WSL strips the win32 bindings"; toolchain paths; which shell can build what |
+| **A notes store** (synced, deliberate) | facts that are true everywhere | "we moved off React Router to TanStack Start because of typed loaders"; architecture; conventions |
 
-If that still sounds like too much friction, the honest alternative is to leave
-memory unsynced and accept that it's per-machine. You lose cross-machine recall
-and keep a quieter git history.
+Once you see it that way, machine-local stops being a limitation. **Environment
+quirks *should* be environment-scoped** — a note about WSL's `/mnt/c` slowness is
+noise on a Mac. And portable decisions belong somewhere portable, which is what a
+notes adapter is for.
+
+The payoff is large: with auto-memory out of the sync set, **everything left syncs
+without ever conflicting.** No merge resolution, no lost edits, no fighting.
+
+The one real friction, stated plainly: **auto-memory is automatic and the notes
+store isn't.** Claude writes to auto-memory on its own; writing a durable decision
+to the portable store is a choice it has to make. Expect some things to land in the
+wrong place. A line in your `CLAUDE.md` helps —
+
+> Machine-specific quirks go to auto memory. Decisions and rationale that are true
+> on every machine go to the notes store.
+
+— and periodically promoting the portable bits out of auto-memory is a five-minute
+job, not a system.
 
 ### 4. Never sync
 
@@ -99,7 +116,8 @@ mkdir -p ~/keel-data && cd ~/keel-data && git init
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
 # Move the shareable pieces in, then link them back
-for item in CLAUDE.md rules projects keel; do
+# Note: `projects` is deliberately absent — auto-memory stays machine-local.
+for item in CLAUDE.md rules keel; do
   [ -e "$CFG/$item" ] && mv "$CFG/$item" ~/keel-data/ && ln -s ~/keel-data/"$item" "$CFG/$item"
 done
 
