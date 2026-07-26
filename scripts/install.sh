@@ -193,9 +193,19 @@ if [ "$DRY" = 0 ]; then
   else
     no "install failed — see errors above"; exit 1
   fi
+  # Adapter bridge plugins (installed later via `keel setup`) rot on the same
+  # schedule keel itself would have: update every keel-marketplace plugin that
+  # is actually installed, not just the one this script installs.
+  for extra in keel-memory keel-reflect; do
+    if claude plugin list --json 2>/dev/null | grep -q "\"$extra@keel\""; then
+      run claude plugin update "$extra@keel" && ok "$extra updated" \
+        || warn "$extra update failed — run: claude plugin update $extra@keel"
+    fi
+  done
 else
   dim "would run: claude plugin install keel@keel"
   dim "would run: claude plugin update keel@keel"
+  dim "would update any installed bridge plugins (keel-memory, keel-reflect)"
 fi
 
 # ── 5. configure ────────────────────────────────────────────────────────────
