@@ -4,7 +4,7 @@
   "private": true,
   "description": "A safety and durability layer for Claude Code — that also wires your memory stack.",
   "scripts": {
-    "test": "node --test plugins/keel/test/guards.test.mjs",
+    "test": "node --test plugins/keel/test/*.test.mjs",
     "validate": "claude plugin validate . && claude plugin validate ./plugins/keel && claude plugin validate ./plugins/keel-memory"
   }
 }

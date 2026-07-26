@@ -162,6 +162,7 @@ function activityDir() {
 }
 
 /** Every activity record, newest first. Cheap: these files are small and monthly. */
+const ACTIVITY_KINDS = new Set(["ask", "said", "end"]);
 function readActivity() {
   const dir = activityDir();
   if (!existsSync(dir)) return [];
@@ -169,7 +170,12 @@ function readActivity() {
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
     for (const line of readFileSync(join(dir, f), "utf-8").split("\n")) {
       if (!line.trim()) continue;
-      try { rows.push(JSON.parse(line)); } catch { /* skip a torn line */ }
+      // The security guard logs into this directory too; select by kind
+      // rather than assuming every .jsonl here is activity.
+      try {
+        const r = JSON.parse(line);
+        if (ACTIVITY_KINDS.has(r.kind)) rows.push(r);
+      } catch { /* skip a torn line */ }
     }
   }
   return rows.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));

@@ -148,6 +148,10 @@ try {
       const prompt = clip(input?.prompt, 1200);
       // Skip acknowledgements — they are noise in a weekly summary.
       if (prompt.length < 8) break;
+      // The harness generates thread titles by firing a synthetic prompt
+      // through this same event; it embeds the user's words, so keeping it
+      // would double-count every first message as two asks.
+      if (/^You write concise thread titles for coding conversations\./.test(prompt)) break;
       write({ kind: "ask", ...base(), text: prompt });
       break;
     }

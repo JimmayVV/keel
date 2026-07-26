@@ -33,7 +33,7 @@
  */
 
 import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -169,8 +169,12 @@ function record(verdict, reason, subject) {
     mkdirSync(dir, { recursive: true });
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // Device-scoped like the activity log: syncing this directory only stays
+    // conflict-free if no two machines ever write the same file.
+    const device = (process.env.KEEL_DEVICE?.trim() || hostname() || "unknown")
+      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "unknown";
     appendFileSync(
-      join(dir, `security-${month}.jsonl`),
+      join(dir, `security-${month}-${device}.jsonl`),
       JSON.stringify({
         ts: now.toISOString(),
         verdict, reason, tool,
