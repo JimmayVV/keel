@@ -163,7 +163,10 @@ you:
 keel status    what's active, what's optional, what each option costs   (read-only)
 keel log       your activity records; --json feeds the week skill       (read-only)
 keel doctor    verify prerequisites; exit 1 on problems                 (read-only)
-keel setup     the only mutating verb — writes the KEEL_* env keys it owns
+keel setup     writes the KEEL_* env keys it owns, nothing else
+keel update    pull the latest keel + any installed bridge plugins
+               (the update slice of install.sh; the script stays the
+                full-ceremony path for backup, reset, and first install)
 ```
 
 If you'd rather type it yourself, the installer can symlink it into `~/.local/bin`

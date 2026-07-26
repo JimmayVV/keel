@@ -18,7 +18,7 @@
  *   keel doctor     verify prerequisites and configuration; exit 1 on problems
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -248,7 +248,8 @@ function cmdStatus() {
 
   console.log(`\n  ${c.dim("keel log      what you've been doing")}`);
   console.log(`  ${c.dim("keel setup    wire an optional adapter")}`);
-  console.log(`  ${c.dim("keel doctor   verify everything")}\n`);
+  console.log(`  ${c.dim("keel doctor   verify everything")}`);
+  console.log(`  ${c.dim("keel update   pull the latest keel")}\n`);
 }
 
 /** Recent activity, grouped by day then project. Raw material for a summary. */
@@ -461,6 +462,66 @@ function cmdDoctor() {
   process.exit(problems ? 1 : 0);
 }
 
+/**
+ * The update slice of install.sh, without the ceremony — no backup, no reset,
+ * no adapter prompts. Refresh the marketplace, update keel, update whichever
+ * bridge plugins are actually installed, and repair the PATH symlink if a
+ * version bump moved the cache directory out from under it.
+ */
+function cmdUpdate() {
+  const claude = (args) => {
+    const r = spawnSync("claude", args, { encoding: "utf-8", timeout: 120000 });
+    return { ok: r.status === 0, out: (r.stdout || r.stderr || "").trim() };
+  };
+  console.log(`\n${c.bold("keel update")}\n`);
+  if (spawnSync("claude", ["--version"], { encoding: "utf-8" }).status !== 0) {
+    console.log(`  ${c.red("✖")} claude CLI not reachable — nothing updated\n`);
+    process.exit(1);
+  }
+  let problems = 0;
+  const step = (label, args) => {
+    const r = claude(args);
+    console.log(`  ${r.ok ? c.green("✔") : c.red("✖")} ${label}${r.ok ? "" : `\n      ${c.dim(r.out.split("\n")[0] ?? "")}`}`);
+    if (!r.ok) problems++;
+    return r.ok;
+  };
+  step("marketplace refreshed", ["plugin", "marketplace", "update"]);
+  step("keel updated", ["plugin", "update", "keel@keel"]);
+  PLUGIN_LIST = undefined; // marketplace refresh may have changed the roster
+  for (const extra of ["keel-memory", "keel-reflect"]) {
+    const ps = pluginState(extra);
+    if (ps?.installed) step(`${extra} updated`, ["plugin", "update", `${extra}@keel`]);
+  }
+
+  // A version bump moves the cache path (…/keel/<version>/bin/keel) and leaves
+  // an opted-in ~/.local/bin/keel symlink dangling. Repair only what is
+  // provably ours: a symlink, dangling, pointing into the plugin cache.
+  const link = join(homedir(), ".local", "bin", "keel");
+  try {
+    const target = readlinkSync(link);
+    if (!existsSync(target) && target.includes(join("plugins", "cache", "keel"))) {
+      const binDirs = readdirSync(join(CONFIG_DIR, "plugins", "cache", "keel", "keel"), { withFileTypes: true })
+        .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+      const fresh = binDirs.length
+        ? join(CONFIG_DIR, "plugins", "cache", "keel", "keel", binDirs[binDirs.length - 1], "bin", "keel")
+        : null;
+      if (fresh && existsSync(fresh)) {
+        unlinkSync(link);
+        symlinkSync(fresh, link);
+        console.log(`  ${c.green("✔")} PATH link repaired ${c.dim(`${link} -> ${fresh}`)}`);
+      } else {
+        console.log(`  ${c.yellow("!")} ${link} is dangling and no cache copy was found — re-run install.sh`);
+        problems++;
+      }
+    }
+  } catch { /* no symlink — nothing opted in, nothing to repair */ }
+
+  console.log(problems
+    ? `\n${c.red(`${problems} problem(s)`)} — install.sh remains the full-ceremony fallback\n`
+    : `\n${c.green("up to date")} ${c.dim("— new sessions pick this up; running sessions keep their startup state")}\n`);
+  process.exit(problems ? 1 : 0);
+}
+
 // ── entry ───────────────────────────────────────────────────────────────────
 const cmd = process.argv[2] ?? "status";
 switch (cmd) {
@@ -475,6 +536,9 @@ switch (cmd) {
   case "doctor":
     cmdDoctor();
     break;
+  case "update":
+    cmdUpdate();
+    break;
   default:
     console.log(`
 ${c.bold("keel")} — configures third-party memory backends for Claude Code
@@ -483,6 +547,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel log       what you've been doing   ${c.dim("--days N [--json]")}
   keel setup     interactive wiring
   keel doctor    verify; exit 1 on problems
+  keel update    pull the latest keel + bridge plugins
 
 keel owns no runtime. It configures other people's tools and gets out of the way.
 `);
