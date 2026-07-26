@@ -66,6 +66,26 @@ So use all three, in this order:
    remember. Surface them in a short "also" section rather than dropping them,
    and propose which project each might belong to — flagging that it's a guess.
 
+6. **Snapshot open work — state, not just flow.** The summary above records what
+   *moved*; a snapshot records what's *on the plate*, and productivity is the
+   delta between two snapshots plus the flow in between. If ticket/PR MCP servers
+   are connected (same discovery as step 3), capture open items assigned to the
+   user — issues, PRs authored, PRs awaiting their review — as a dated markdown
+   file:
+
+   ```
+   $KEEL_MEMORY_HOME/work/snapshots/YYYY-MM-DD-open-work.md
+   ```
+
+   One line per item with its key, status, and a link. Consent lives in the
+   directory, not in config: if previous snapshots exist there, the practice is
+   established — take the new one automatically and **diff against the latest**:
+   items gone are throughput, new keys are intake, unchanged items are aging.
+   Fold that into a "Delta" section of the summary. If the directory is empty or
+   absent, ask once whether to start the practice; a no is a no for this run,
+   not forever. If `KEEL_MEMORY_HOME` isn't set, offer the snapshot as text
+   output instead — don't invent a location.
+
 ## Output shape
 
 ```
@@ -78,6 +98,11 @@ In flight — <open branches, blocked items>
 
 ### Also
 - <one-off work, with a guess at where it belongs>
+
+### Delta            (only when a previous snapshot exists)
+Closed — <keys that left the open set since last snapshot>
+Intake — <new keys that appeared>
+Aging — <still open, unchanged status, worth flagging past ~30d>
 
 ### Not captured
 <anything the sources genuinely couldn't see>
@@ -100,3 +125,6 @@ impact and scope rather than activity.
   it. Aim for something that fits on one screen per project.
 - **Offer to save it.** If they like it, propose writing it into project memory
   so next week's summary has continuity to build on.
+- **Snapshots are work data.** Ticket contents and PR titles are employer
+  information — the snapshot folder must never sync to a personal remote
+  (see NETWORKING.md). Note this in the file itself the first time you write one.
