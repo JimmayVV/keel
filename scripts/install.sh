@@ -12,19 +12,22 @@
 # Usage:
 #   bash scripts/install.sh              # interactive
 #   bash scripts/install.sh --no-reset   # install alongside an existing setup
+#   bash scripts/install.sh --no-backup  # skip the backup step (e.g. using this as an updater)
 #   bash scripts/install.sh --dry-run    # print the plan, change nothing
 set -uo pipefail
 
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP="$HOME/claude-backup-$STAMP"
-DRY=0; DO_RESET=""; MARKETPLACE="JimmayVV/keel"
+DRY=0; DO_RESET=""; DO_BACKUP=""; MARKETPLACE="JimmayVV/keel"
 
 for a in "$@"; do
   case "$a" in
     --dry-run)   DRY=1 ;;
     --no-reset)  DO_RESET=no ;;
     --reset)     DO_RESET=yes ;;
+    --no-backup) DO_BACKUP=no ;;
+    --backup)    DO_BACKUP=yes ;;
     --marketplace=*) MARKETPLACE="${a#*=}" ;;
     -h|--help)
       sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -86,7 +89,11 @@ dim "reflection:    not in v0.1 — nothing to prepare"
 
 # ── 2. back up ──────────────────────────────────────────────────────────────
 b $'\n2. Back up'
-if [ -d "$CFG" ]; then
+if [ ! -d "$CFG" ]; then
+  dim "no existing config dir — nothing to back up"
+elif [ "$DO_BACKUP" = no ]; then
+  dim "skipped (--no-backup)"
+elif [ "$DO_BACKUP" = yes ] || ask "Back up $CFG before continuing?" y; then
   if git -C "$CFG" rev-parse --git-dir >/dev/null 2>&1; then
     AB=$(git -C "$CFG" rev-list --left-right --count HEAD...@{upstream} 2>/dev/null || echo "? ?")
     DIRTY=$(git -C "$CFG" status --porcelain 2>/dev/null | wc -l)
@@ -117,7 +124,7 @@ if [ -d "$CFG" ]; then
     [ "$DRY" = 1 ] && dim "would back up to $BACKUP"
   fi
 else
-  dim "no existing config dir — nothing to back up"
+  dim "skipped — editing $CFG in place"
 fi
 
 # ── 3. reset (optional) ─────────────────────────────────────────────────────
@@ -268,6 +275,6 @@ else
   dim "Verify:      ask Claude to run 'keel status && keel doctor'"
   dim "Prove it:    start a session, ask something, exit, then ask Claude: keel log"
 fi
-dim "Backup:      $BACKUP"
+[ -d "$BACKUP" ] && dim "Backup:      $BACKUP"
 [ -d "$CFG.old-$STAMP" ] && dim "Undo reset:  rm -rf '$CFG' && mv '$CFG.old-$STAMP' '$CFG'"
 printf '\n'

@@ -125,6 +125,7 @@ anything. Every step is skippable, and the script is safe to re-run.
 ```sh
 bash scripts/install.sh --dry-run    # print the plan, change nothing
 bash scripts/install.sh --no-reset   # install alongside an existing setup
+bash scripts/install.sh --no-backup  # skip the backup step (e.g. using this as an updater)
 ```
 
 Or by hand:
