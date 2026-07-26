@@ -58,17 +58,31 @@ done
 if command -v claude >/dev/null 2>&1; then ok "claude $(claude --version 2>&1 | head -1)"; else no "claude missing"; MISSING+=(claude); fi
 
 if [ ${#MISSING[@]} -gt 0 ]; then
-  printf '\n'; warn "keel needs these before it can install. Run the right line yourself:"
+  printf '\n'; warn "keel needs these first. Run the right line yourself — this script never sudos:"
   for m in "${MISSING[@]}"; do
     case "$m" in
       node) dim "sudo apt install -y nodejs      # or: brew install node / winget install OpenJS.NodeJS" ;;
       git)  dim "sudo apt install -y git         # or: brew install git" ;;
-      claude) dim "see https://code.claude.com — install and run 'claude' once to log in" ;;
+      claude) dim "see https://code.claude.com — install it, then run 'claude' once to log in" ;;
     esac
   done
   printf '\n'; dim "then re-run this script. It is safe to run repeatedly."
-  exit 1
+  # A dry run exists to show the whole plan. Exiting here would hide it, so keep
+  # going and let the reader see everything that would happen once deps are in.
+  if [ "$DRY" = 0 ]; then exit 1; else warn "continuing anyway to show the rest of the plan (dry run)"; fi
 fi
+
+# Readiness of the OPTIONAL adapters — worth knowing before you start, not after.
+printf '\n'; dim "optional adapter readiness:"
+PYV=$(python3 --version 2>/dev/null | awk '{print $2}')
+if command -v uvx >/dev/null 2>&1; then
+  dim "notes adapter: uv present — ready"
+elif [ -n "$PYV" ] && [ "$(printf '%s\n3.12\n' "$PYV" | sort -V | head -1)" = "3.12" ]; then
+  dim "notes adapter: python $PYV is new enough; needs uv — pip3 install --user uv"
+else
+  dim "notes adapter: python ${PYV:-none} is below 3.12; uv will provision one — pip3 install --user uv"
+fi
+dim "reflection:    not in v0.1 — nothing to prepare"
 
 # ── 2. back up ──────────────────────────────────────────────────────────────
 b $'\n2. Back up'
