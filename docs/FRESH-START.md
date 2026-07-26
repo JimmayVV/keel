@@ -119,25 +119,35 @@ feel different from a fresh one.
 mv "$CFG" "$CFG.old-$STAMP"
 ```
 
-If a separate repo was feeding it symlinks, move that aside too rather than
-deleting it:
+That single move is enough, including for setups assembled out of symlinks into a
+second repository. **The links live inside the config dir, so moving it removes
+them** — there is no need to touch the other repository, and it's not yours to
+move anyway. It stays where it is, which is your route back.
+
+Worth knowing which directories were involved, though:
 
 ```sh
-[ -d "$HOME/.pai-doctrine" ] && mv "$HOME/.pai-doctrine" "$HOME/.pai-doctrine.old-$STAMP"
+find "$CFG.old-$STAMP" -maxdepth 3 -type l -exec readlink -f {} \; 2>/dev/null \
+  | grep -v "^$CFG" | sed "s|^\($HOME/[^/]*\).*|\1|" | sort -u
 ```
 
-Clean the shell hooks that pointed at the old setup — check before editing:
+Two things do survive the move and can quietly resurrect the old setup or point
+tooling at a directory that no longer exists.
+
+**Shell aliases:**
 
 ```sh
-grep -n 'pai\|\.claude' "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null
+grep -nE "alias [A-Za-z0-9_-]+=.*($(basename "$CFG")|claude)" \
+  "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile" 2>/dev/null
 ```
 
-Remove any alias lines you find that launched the old harness. Also check whether
-a global git hooks path was pointing into the old directory:
+Remove any that launched the old harness.
+
+**A global git hooks path:**
 
 ```sh
 git config --global --get core.hooksPath
-# if it points inside the old config dir:
+# only if it points inside the old config dir:
 git config --global --unset core.hooksPath
 ```
 
@@ -252,8 +262,10 @@ Any point, one command:
 
 ```sh
 rm -rf "$CFG" && mv "$CFG.old-$STAMP" "$CFG"
-[ -d "$HOME/.pai-doctrine.old-$STAMP" ] && mv "$HOME/.pai-doctrine.old-$STAMP" "$HOME/.pai-doctrine"
 ```
+
+Any symlinks it contained point at repositories that were never moved, so they
+resolve again immediately.
 
 Restore the shell alias and `core.hooksPath` if you removed them. The full backup
 at `~/claude-backup-$STAMP` remains untouched either way.
@@ -267,7 +279,7 @@ you won't know whether you miss the old setup until you've tried to do something
 with it.
 
 ```sh
-rm -rf "$CFG.old-$STAMP" "$HOME/.pai-doctrine.old-$STAMP" "$HOME/keel-carryover"
+rm -rf "$CFG.old-$STAMP" "$HOME/keel-carryover-$STAMP"
 # keep ~/claude-backup-$STAMP longer, or archive it
 ```
 

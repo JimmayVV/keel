@@ -113,6 +113,19 @@ if [ ! -d "$CFG" ]; then
 elif [ "$DO_RESET" = no ]; then
   dim "skipped (--no-reset) — keel will install alongside your current setup"
 else
+  # Some harnesses assemble the config dir out of symlinks into a second
+  # repository. Report those rather than guessing at a path: the links live
+  # INSIDE the config dir, so moving it aside already breaks them, and the other
+  # repository is not ours to move.
+  EXTERNAL=$(find "$CFG" -maxdepth 3 -type l -exec readlink -f {} \; 2>/dev/null \
+             | grep -v "^$CFG" | sed "s|^\($HOME/[^/]*\).*|\1|" | sort -u || true)
+  if [ -n "$EXTERNAL" ]; then
+    warn "parts of your config are symlinked in from elsewhere:"
+    printf '%s\n' "$EXTERNAL" | while read -r t; do dim "$t"; done
+    dim "Those links live inside the config dir, so moving it aside removes them."
+    dim "The directories above are left untouched — that is your route back."
+  fi
+
   dim "This moves your current setup aside and keeps your login and memory."
   dim "Undo at any time:  rm -rf '$CFG' && mv '$CFG.old-$STAMP' '$CFG'"
   if [ "$DO_RESET" = yes ] || ask "Reset to vanilla?" n; then
@@ -124,16 +137,27 @@ else
     [ -e "$HOME/.claude.json" ]     && run cp -a "$HOME/.claude.json" "$CARRY/"
     [ -d "$CFG/projects" ]          && run cp -a "$CFG/projects" "$CARRY/projects"
     run mv "$CFG" "$CFG.old-$STAMP"
-    [ -d "$HOME/.pai-doctrine" ] && run mv "$HOME/.pai-doctrine" "$HOME/.pai-doctrine.old-$STAMP"
     run mkdir -p "$CFG"
     [ -e "$CARRY/.credentials.json" ] && run cp -a "$CARRY/.credentials.json" "$CFG/"
     [ -d "$CARRY/projects" ]          && run cp -a "$CARRY/projects" "$CFG/projects"
     [ "$DRY" = 1 ] && dim "would reset, carrying over login and per-project memory" \
                    || ok "reset — login and per-project memory carried over"
+    # Two things that survive a config-dir move and can quietly resurrect the old
+    # setup or point tooling at a directory that no longer exists.
     HP=$(git config --global --get core.hooksPath 2>/dev/null || true)
-    [ -n "$HP" ] && warn "global git core.hooksPath is set to '$HP' — unset it if it pointed at the old setup"
-    grep -lsE 'alias .*\.claude|alias pai' "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null \
-      | while read -r rc; do warn "check $rc for aliases pointing at the old harness"; done
+    if [ -n "$HP" ]; then
+      case "$HP" in
+        "$CFG"*|"$CFG.old-$STAMP"*) warn "global git core.hooksPath points into the old config dir ($HP) — unset it:"; dim "git config --global --unset core.hooksPath" ;;
+        *) dim "global git core.hooksPath is set to '$HP' (outside the config dir — left alone)" ;;
+      esac
+    fi
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+      [ -f "$rc" ] || continue
+      if grep -qsE "alias [A-Za-z0-9_-]+=.*($(basename "$CFG")|claude)" "$rc"; then
+        warn "$rc defines aliases referencing your config dir — review them:"
+        grep -nsE "alias [A-Za-z0-9_-]+=.*($(basename "$CFG")|claude)" "$rc" | head -4 | while read -r l; do dim "$l"; done
+      fi
+    done
   else
     dim "skipped — installing alongside your current setup"
   fi
