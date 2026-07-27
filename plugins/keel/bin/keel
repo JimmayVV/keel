@@ -429,6 +429,15 @@ async function cmdSetup(argv) {
         continue;
       }
 
+      // An adapter that doesn't exist yet cannot be "missing" — there is nothing
+      // the user could do about it. Counting it made `keel setup --memory-home X`
+      // exit 1 on a run that did exactly what was asked, which any `&&` chain or
+      // CI step reads as failure.
+      if (!a.available) {
+        console.log(`  ${c.dim(a.reason ?? "not available in this version")}\n`);
+        continue;
+      }
+
       const pre = a.prereq();
       if (!pre.ok) {
         console.log(`  ${c.yellow(`⚠ ${pre.what} not found`)} — install it, then re-run:\n     ${pre.fix}`);
