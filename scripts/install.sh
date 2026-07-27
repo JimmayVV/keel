@@ -14,6 +14,34 @@
 #   bash scripts/install.sh --no-reset   # install alongside an existing setup
 #   bash scripts/install.sh --no-backup  # skip the backup step (e.g. using this as an updater)
 #   bash scripts/install.sh --dry-run    # print the plan, change nothing
+
+# ── architecture gate ───────────────────────────────────────────────────────
+# Refuse up front rather than failing confusingly two hundred lines later.
+# This script expands possibly-empty arrays under `set -u`, which aborts with
+# "unbound variable" on bash 3.2 — the version macOS still ships as /bin/bash
+# for licensing reasons. A wrong-shell failure should name the shell, not
+# surface as a mysterious error at the dependency check.
+if [ -z "${BASH_VERSINFO:-}" ]; then
+  echo "keel's installer requires bash. Re-run it as:  bash scripts/install.sh" >&2
+  exit 1
+fi
+if [ "${BASH_VERSINFO[0]}" -lt 4 ] ||
+   { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
+  cat >&2 <<EOF
+keel's installer needs bash 4.4 or newer. This is bash ${BASH_VERSION}.
+
+macOS ships bash 3.2 as /bin/bash, where this script's array handling aborts
+under 'set -u'. A newer bash is one command away:
+
+  brew install bash
+  /opt/homebrew/bin/bash scripts/install.sh   # Apple silicon
+  /usr/local/bin/bash scripts/install.sh      # Intel
+
+Nothing has been changed.
+EOF
+  exit 1
+fi
+
 set -uo pipefail
 
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -59,6 +87,20 @@ for c in node git; do
   if command -v "$c" >/dev/null 2>&1; then ok "$c $("$c" --version 2>&1 | head -1)"; else no "$c missing"; MISSING+=("$c"); fi
 done
 if command -v claude >/dev/null 2>&1; then ok "claude $(claude --version 2>&1 | head -1)"; else no "claude missing"; MISSING+=(claude); fi
+
+# Per-project memory is keyed by the project's ABSOLUTE path: /home/jo/web/app
+# becomes projects/-home-jo-web-app. Machines that share memory must therefore
+# agree on the shape of $HOME, or a machine looks up a slug the other never
+# writes. Standalone installs don't care; machines joining a network do.
+case "$HOME" in
+  /home/*) ok "home layout $HOME" ;;
+  *)
+    warn "home is $HOME, not /home/<user>"
+    dim "Per-project memory is keyed by absolute path, so this machine will not"
+    dim "find memory synced from a /home/<user> machine, or vice versa."
+    dim "Harmless standalone; a real problem if you are joining an existing network."
+    ;;
+esac
 
 if [ ${#MISSING[@]} -gt 0 ]; then
   printf '\n'; warn "keel needs these first. Run the right line yourself — this script never sudos:"
