@@ -46,7 +46,13 @@ set -uo pipefail
 
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 STAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP="$HOME/claude-backup-$STAMP"
+
+# keel puts nothing directly in $HOME. Backups, carryover, and the displaced old
+# config are the installer's files, not the user's, and a home directory full of
+# claude-backup-20260727-004512 is how a tool wears out its welcome. XDG state is
+# where machine-local, regenerable-ish data belongs.
+KEEL_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/keel"
+BACKUP="$KEEL_STATE/backups/claude-$STAMP"
 DRY=0; DO_RESET=""; DO_BACKUP=""; MARKETPLACE="JimmayVV/keel"
 
 for a in "$@"; do
@@ -190,16 +196,16 @@ else
   fi
 
   dim "This moves your current setup aside and keeps your login and memory."
-  dim "Undo at any time:  rm -rf '$CFG' && mv '$CFG.old-$STAMP' '$CFG'"
+  dim "Undo at any time:  rm -rf '$CFG' && mv '$KEEL_STATE/previous-config-$STAMP' '$CFG'"
   if [ "$DO_RESET" = yes ] || ask "Reset to vanilla?" n; then
     warn "close every other Claude Code session before continuing"
     ask "All sessions closed?" y || { no "aborted — nothing changed"; exit 1; }
-    CARRY="$HOME/keel-carryover-$STAMP"
+    CARRY="$KEEL_STATE/carryover-$STAMP"
     run mkdir -p "$CARRY"
     [ -e "$CFG/.credentials.json" ] && run cp -a "$CFG/.credentials.json" "$CARRY/"
     [ -e "$HOME/.claude.json" ]     && run cp -a "$HOME/.claude.json" "$CARRY/"
     [ -d "$CFG/projects" ]          && run cp -a "$CFG/projects" "$CARRY/projects"
-    run mv "$CFG" "$CFG.old-$STAMP"
+    run mv "$CFG" "$KEEL_STATE/previous-config-$STAMP"
     run mkdir -p "$CFG"
     [ -e "$CARRY/.credentials.json" ] && run cp -a "$CARRY/.credentials.json" "$CFG/"
     [ -d "$CARRY/projects" ]          && run cp -a "$CARRY/projects" "$CFG/projects"
@@ -210,7 +216,7 @@ else
     HP=$(git config --global --get core.hooksPath 2>/dev/null || true)
     if [ -n "$HP" ]; then
       case "$HP" in
-        "$CFG"*|"$CFG.old-$STAMP"*) warn "global git core.hooksPath points into the old config dir ($HP) — unset it:"; dim "git config --global --unset core.hooksPath" ;;
+        "$CFG"*|"$KEEL_STATE/previous-config-$STAMP"*) warn "global git core.hooksPath points into the old config dir ($HP) — unset it:"; dim "git config --global --unset core.hooksPath" ;;
         *) dim "global git core.hooksPath is set to '$HP' (outside the config dir — left alone)" ;;
       esac
     fi
@@ -272,6 +278,19 @@ done
 if [ -n "$KEELBIN" ] && [ "$DRY" = 0 ]; then
   node "$KEELBIN" status
   printf '\n'
+
+  # Joining a network is the step that used to be a page of manual symlink
+  # commands in NETWORKING.md. `keel join` asks where the repo goes (defaulting
+  # under XDG data, not $HOME), moves the shared pieces in, links them back, and
+  # records the two machine-local values. Idempotent, so a re-run is harmless.
+  dim "A network is the set of machines sharing one data repo — memory,"
+  dim "instructions and activity follow you between them."
+  if ask "Join or create a data network now?" y; then
+    node "$KEELBIN" join
+  else
+    dim "later:  keel join"
+  fi
+
   if ask "Configure optional adapters now? (interactive)" n; then node "$KEELBIN" setup; fi
 
   # keel deliberately isn't on your shell's PATH by default — Claude's Bash tool
@@ -318,5 +337,5 @@ else
   dim "Prove it:    start a session, ask something, exit, then ask Claude: keel log"
 fi
 [ -d "$BACKUP" ] && dim "Backup:      $BACKUP"
-[ -d "$CFG.old-$STAMP" ] && dim "Undo reset:  rm -rf '$CFG' && mv '$CFG.old-$STAMP' '$CFG'"
+[ -d "$KEEL_STATE/previous-config-$STAMP" ] && dim "Undo reset:  rm -rf '$CFG' && mv '$KEEL_STATE/previous-config-$STAMP' '$CFG'"
 printf '\n'

@@ -18,8 +18,8 @@
  *   keel doctor     verify prerequisites and configuration; exit 1 on problems
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync } from "node:fs";
+import { homedir, hostname } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
@@ -27,9 +27,38 @@ import { stdin, stdout } from "node:process";
 
 const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
 const SETTINGS = join(CONFIG_DIR, "settings.json");
+const LOCAL_SETTINGS = join(CONFIG_DIR, "settings.local.json");
 
-/** Every env key keel manages. Anything outside this list is not ours to touch. */
-const OWNED_KEYS = ["KEEL_MEMORY_HOME", "KEEL_HINDSIGHT_URL"];
+/**
+ * XDG base directories, with the spec's defaults.
+ *
+ * keel creates nothing directly in $HOME. A tool that drops `~/keel-data`,
+ * `~/.keel`, and `~/claude-backup-20260727-004512` into someone's home
+ * directory is a tool they will eventually resent, and the resentment is
+ * earned — those are the tool's files, not the user's, and they belong under
+ * ~/.local where the user never has to look at them.
+ *
+ * Everything here is a DEFAULT. Every path is overridable, because a tidy home
+ * directory is a preference and preferences belong to the person whose home it
+ * is.
+ */
+const XDG_DATA = process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share");
+const XDG_STATE = process.env.XDG_STATE_HOME?.trim() || join(homedir(), ".local", "state");
+const DEFAULT_DATA_DIR = join(XDG_DATA, "keel", "data");
+const DEFAULT_NOTES_DIR = join(XDG_DATA, "keel", "notes");
+const DEFAULT_BACKUP_DIR = join(XDG_STATE, "keel", "backups");
+
+/**
+ * Keys keel manages, split by whether they survive a trip to another machine.
+ *
+ * OWNED_KEYS mean the same thing everywhere and live in settings.json, which is
+ * safe to sync. LOCAL_KEYS are absolute paths and machine identities — writing
+ * those into the synced file guarantees a conflict on every pull, and whichever
+ * side loses points at a directory that doesn't exist there. They go to
+ * settings.local.json, which is never synced.
+ */
+const OWNED_KEYS = ["KEEL_HINDSIGHT_URL"];
+const LOCAL_KEYS = ["KEEL_MEMORY_HOME", "KEEL_DATA_DIR", "KEEL_DEVICE"];
 
 const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
@@ -62,15 +91,29 @@ function pluginState(name) {
   return { installed: Boolean(hit), enabled: Boolean(hit?.enabled) };
 }
 
-function readSettings() {
-  if (!existsSync(SETTINGS)) return {};
+function readJson(path) {
+  if (!existsSync(path)) return {};
   try {
-    return JSON.parse(readFileSync(SETTINGS, "utf-8"));
+    return JSON.parse(readFileSync(path, "utf-8"));
   } catch (e) {
-    console.error(c.red(`✖ ${SETTINGS} is not valid JSON — refusing to touch it.`));
+    console.error(c.red(`✖ ${path} is not valid JSON — refusing to touch it.`));
     console.error(`  ${e.message}`);
     process.exit(1);
   }
+}
+
+function readSettings() {
+  return readJson(SETTINGS);
+}
+
+/**
+ * The env Claude Code actually sees: settings.local.json wins over settings.json,
+ * which is what makes a machine-specific override an override rather than a
+ * conflict. Read through this, never through readSettings alone, or doctor will
+ * report a correctly-configured machine as unconfigured.
+ */
+function effectiveEnv() {
+  return { ...(readSettings().env ?? {}), ...(readJson(LOCAL_SETTINGS).env ?? {}) };
 }
 
 /**
@@ -97,6 +140,34 @@ function writeOwnedEnv(patch) {
   }
   mkdirSync(dirname(SETTINGS), { recursive: true });
   writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * The same contract as writeOwnedEnv, against settings.local.json.
+ *
+ * This file is the reason two machines can share a config directory without
+ * fighting: absolute paths and device identity live here, it is gitignored by
+ * convention, and Claude Code layers it over settings.json. Before this existed
+ * `keel setup` wrote a machine's home path into the synced file and every pull
+ * conflicted on that line.
+ */
+function writeLocalEnv(patch) {
+  const settings = readJson(LOCAL_SETTINGS);
+  const before = JSON.stringify(settings);
+
+  settings.env = { ...(settings.env ?? {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (!LOCAL_KEYS.includes(k)) throw new Error(`keel does not own the local key ${k}`);
+    if (v === null) delete settings.env[k];
+    else settings.env[k] = v;
+  }
+
+  if (JSON.stringify(settings) === before) return false;
+
+  if (existsSync(LOCAL_SETTINGS)) copyFileSync(LOCAL_SETTINGS, `${LOCAL_SETTINGS}.keel-backup`);
+  mkdirSync(dirname(LOCAL_SETTINGS), { recursive: true });
+  writeFileSync(LOCAL_SETTINGS, JSON.stringify(settings, null, 2) + "\n");
   return true;
 }
 
@@ -144,7 +215,7 @@ const ADAPTERS = {
     prompt: "Where should notes live?",
     // Hidden by default: tool state does not belong as a visible directory in
     // the user's home. Anyone who wants it visible can say so at the prompt.
-    defaultValue: () => join(homedir(), ".keel", "basic-memory"),
+    defaultValue: () => DEFAULT_NOTES_DIR,
     prereq: () => ({
       ok: have("uvx"),
       what: "uvx (from uv)",
@@ -214,7 +285,7 @@ function readActivity() {
 }
 
 function cmdStatus() {
-  const env = readSettings().env ?? {};
+  const env = effectiveEnv();
   const acts = readActivity();
   console.log(`\n${c.bold("keel")}  ${c.dim(CONFIG_DIR)}`);
 
@@ -346,7 +417,7 @@ async function cmdSetup(argv) {
     console.log(`\n${c.bold("keel setup")} — configures adapters. Nothing is installed silently.\n`);
 
     for (const [name, a] of Object.entries(ADAPTERS)) {
-      const env = readSettings().env ?? {};
+      const env = effectiveEnv();
       const current = env[a.envKey];
       const flagValue = flags[a.flag];
       const skipped = flags["skip"]?.split(",").includes(name);
@@ -387,7 +458,7 @@ async function cmdSetup(argv) {
         continue;
       }
 
-      const changed = writeOwnedEnv({ [a.envKey]: value });
+      const changed = (LOCAL_KEYS.includes(a.envKey) ? writeLocalEnv : writeOwnedEnv)({ [a.envKey]: value });
       const note = a.postSetup(value);
       console.log(`  ${c.green("✔")} ${changed ? "written to settings.json" : "already set"}${note ? ` · ${note}` : ""}`);
       // The hint has to match reality: `enable` only works on a plugin that is
@@ -410,7 +481,7 @@ async function cmdSetup(argv) {
 }
 
 function cmdDoctor() {
-  const env = readSettings().env ?? {};
+  const env = effectiveEnv();
   let problems = 0;
   console.log(`\n${c.bold("keel doctor")}\n`);
 
@@ -544,6 +615,145 @@ function cmdUpdate() {
   process.exit(problems ? 1 : 0);
 }
 
+/**
+ * `keel join` — put this machine on a network.
+ *
+ * A network is the set of machines sharing one data repo. Joining is four
+ * mechanical steps nobody should perform by hand twice: pick where the repo
+ * lives, get it there, link the shared pieces into the config dir, and record
+ * the two machine-local values that keep the whole thing from colliding.
+ *
+ * Idempotent by construction — every step checks before it acts, so re-running
+ * after a half-finished attempt finishes the job rather than compounding it.
+ * Nothing is deleted: existing files are moved into the repo, not replaced.
+ */
+async function cmdJoin(argv) {
+  const flag = (name) => {
+    const i = argv.indexOf(`--${name}`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const assumeYes = argv.includes("--yes") || !stdin.isTTY;
+  const rl = assumeYes ? null : createInterface({ input: stdin, output: stdout });
+  const askFor = async (q, def) => {
+    if (!rl) return def;
+    const a = (await rl.question(`  ${q} ${c.dim(`[${def}]`)} `)).trim();
+    return a || def;
+  };
+
+  try {
+    console.log(`\n${c.bold("keel join")} — put this machine on a network\n`);
+
+    const dataDir = flag("data-dir") ?? (await askFor("Where should the data repo live?", DEFAULT_DATA_DIR));
+    const remote = flag("remote");
+    const device = flag("device") ?? (await askFor("Name for this machine?", hostname().toLowerCase().slice(0, 32)));
+
+    // ── 1. the repo itself
+    const git = (...args) => spawnSync("git", args, { encoding: "utf-8", env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+    if (existsSync(join(dataDir, ".git"))) {
+      console.log(`  ${c.green("✔")} using existing repo ${c.dim(dataDir)}`);
+    } else if (remote) {
+      mkdirSync(dirname(dataDir), { recursive: true });
+      const r = git("clone", "-q", remote, dataDir);
+      if (r.status !== 0) {
+        console.error(`  ${c.red("✖")} clone failed: ${r.stderr?.trim()}`);
+        return 1;
+      }
+      console.log(`  ${c.green("✔")} cloned ${remote}`);
+    } else {
+      mkdirSync(dataDir, { recursive: true });
+      git("init", "-q", "-b", "main", dataDir);
+      console.log(`  ${c.green("✔")} initialised a new repo ${c.dim(dataDir)}`);
+      console.log(`    ${c.dim("add a remote later:  git -C " + dataDir + " remote add origin <url>")}`);
+    }
+
+    // ── 2. scaffold, only what's missing
+    mkdirSync(join(dataDir, "keel", "activity"), { recursive: true });
+    mkdirSync(join(dataDir, "projects"), { recursive: true });
+    const scaffold = {
+      ".gitattributes":
+        "# MEMORY.md is a flat append-only index. Two machines adding different\n" +
+        "# bullets is two facts, not a conflict — union keeps both automatically.\n" +
+        "**/memory/MEMORY.md merge=union\n" +
+        "keel/activity/*.jsonl merge=union\n",
+      ".gitignore":
+        "# machine-local, never shared\n.credentials.json\nsettings.local.json\n" +
+        "sync-status.json\n.keel-sync.lock/\n.keel-last-pull\n*.jsonl.tmp\n\n" +
+        "# projects/ is synced ONLY for memory. Session transcripts alongside it are\n" +
+        "# orders of magnitude larger and useless on another machine.\n" +
+        "/projects/**\n!/projects/*/\n!/projects/*/memory/\n!/projects/*/memory/**\n",
+    };
+    for (const [name, body] of Object.entries(scaffold)) {
+      const p = join(dataDir, name);
+      if (!existsSync(p)) {
+        writeFileSync(p, body);
+        console.log(`  ${c.green("✔")} wrote ${name}`);
+      }
+    }
+
+    // ── 3. link the shared pieces in, preserving whatever is already there
+    for (const item of ["CLAUDE.md", "keel", "projects"]) {
+      const link = join(CONFIG_DIR, item);
+      const target = join(dataDir, item);
+      let state;
+      try {
+        state = readlinkSync(link);
+      } catch {
+        state = null;
+      }
+      if (state === target) {
+        console.log(`  ${c.dim("○")} ${item} already linked`);
+        continue;
+      }
+      if (state !== null) {
+        console.log(`  ${c.yellow("!")} ${item} is a symlink to ${state} — leaving it alone`);
+        continue;
+      }
+      if (existsSync(link)) {
+        // Move the real thing into the repo rather than clobbering either side.
+        // Directory and file need different shapes here: mkdir-ing the target
+        // first turns a plain CLAUDE.md into CLAUDE.md/CLAUDE.md.
+        const isDir = statSync(link).isDirectory();
+        let r;
+        if (isDir) {
+          mkdirSync(target, { recursive: true });
+          r = spawnSync("cp", ["-a", `${link}/.`, `${target}/`], { encoding: "utf-8" });
+        } else if (existsSync(target)) {
+          // Repo already has this file — keep the repo's copy, park ours beside it.
+          spawnSync("cp", ["-a", link, `${link}.pre-keel`]);
+          r = { status: 0 };
+          console.log(`  ${c.yellow("!")} repo already has ${item}; yours saved as ${item}.pre-keel`);
+        } else {
+          mkdirSync(dirname(target), { recursive: true });
+          r = spawnSync("cp", ["-a", link, target], { encoding: "utf-8" });
+        }
+        if (r.status !== 0) {
+          console.log(`  ${c.red("✖")} could not move ${item} into the repo — skipping`);
+          continue;
+        }
+        spawnSync("rm", ["-rf", link]);
+      }
+      mkdirSync(dirname(link), { recursive: true });
+      try {
+        symlinkSync(target, link);
+        console.log(`  ${c.green("✔")} linked ${item} → ${c.dim(target)}`);
+      } catch (e) {
+        console.log(`  ${c.red("✖")} could not link ${item}: ${e.message}`);
+      }
+    }
+
+    // ── 4. the two values that must differ per machine
+    writeLocalEnv({ KEEL_DEVICE: device, KEEL_DATA_DIR: dataDir });
+    console.log(`  ${c.green("✔")} device "${device}" and data dir recorded in settings.local.json`);
+
+    console.log(`\n${c.bold("Joined.")}`);
+    console.log(`  ${c.dim("Sync runs on its own: pull at session start, push at session end.")}`);
+    console.log(`  ${c.dim(`Verify:  keel doctor`)}\n`);
+    return 0;
+  } finally {
+    rl?.close();
+  }
+}
+
 // ── entry ───────────────────────────────────────────────────────────────────
 const cmd = process.argv[2] ?? "status";
 switch (cmd) {
@@ -552,6 +762,8 @@ switch (cmd) {
     break;
   case "setup":
     process.exit((await cmdSetup(process.argv.slice(3))) ? 1 : 0);
+  case "join":
+    process.exit(await cmdJoin(process.argv.slice(3)));
   case "log":
     cmdLog(process.argv.slice(3));
     break;
@@ -568,6 +780,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel status    what is wired            ${c.dim("(default)")}
   keel log       what you've been doing   ${c.dim("--days N [--json]")}
   keel setup     interactive wiring
+  keel join      put this machine on a network  ${c.dim("--data-dir P --device N --remote URL")}
   keel doctor    verify; exit 1 on problems
   keel update    pull the latest keel + bridge plugins
 
