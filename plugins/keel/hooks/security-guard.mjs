@@ -32,7 +32,7 @@
  * Derived from PAI's SecurityValidator (Daniel Miessler's PAI, MIT).
  */
 
-import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,6 +98,69 @@ if (!policy || typeof policy !== "object" || !policy.bash || typeof policy.bash 
     );
   }
   allow();
+}
+
+/**
+ * Your policy, layered over the shipped one.
+ *
+ * The shipped policy lives inside the plugin cache, which `keel update` replaces
+ * wholesale — so editing it there is not a real escape hatch, it's a change that
+ * disappears the next time keel updates itself. This file lives outside the
+ * cache and survives.
+ *
+ * Three things it can do:
+ *   bash.allow    patterns that EXEMPT a command from every shipped block rule.
+ *                 Checked first and wins outright. This is the control you keep
+ *                 when a shipped rule is wrong for your machine.
+ *   bash.blocked  additional rules, appended to the shipped ones.
+ *   bash.confirm  likewise.
+ *
+ * A malformed overlay fails CLOSED for Bash rather than being ignored. Silently
+ * dropping it is the worse failure: you'd believe a rule you wrote is in force
+ * when it isn't, which is exactly the false confidence a guard must never sell.
+ */
+const USER_POLICY =
+  process.env.KEEL_POLICY_FILE?.trim() ||
+  join(process.env.XDG_CONFIG_HOME?.trim() || join(homedir(), ".config"), "keel", "policy.json");
+
+let overlay = null;
+if (existsSync(USER_POLICY)) {
+  try {
+    overlay = JSON.parse(readFileSync(USER_POLICY, "utf-8"));
+    if (!overlay || typeof overlay !== "object" || Array.isArray(overlay)) throw new Error("not an object");
+  } catch (e) {
+    if (tool === "Bash") {
+      block(
+        "your policy overlay could not be read — failing closed",
+        `File: ${USER_POLICY}\nError: ${String(e?.message ?? e)}\n` +
+          `Fix the JSON, or move the file aside to fall back to the shipped policy.`,
+      );
+    }
+    allow();
+  }
+}
+
+if (overlay) {
+  const merge = (section, key) => [
+    ...(policy[section]?.[key] ?? []),
+    ...(overlay[section]?.[key] ?? []),
+  ];
+  policy = {
+    ...policy,
+    bash: {
+      ...policy.bash,
+      blocked: merge("bash", "blocked"),
+      confirm: merge("bash", "confirm"),
+      alert: merge("bash", "alert"),
+      allow: overlay.bash?.allow ?? [],
+    },
+    paths: {
+      ...(policy.paths ?? {}),
+      zeroAccess: merge("paths", "zeroAccess"),
+      readOnly: merge("paths", "readOnly"),
+      confirmWrite: merge("paths", "confirmWrite"),
+    },
+  };
 }
 
 /** Compile once, fail closed on a bad pattern rather than skipping it silently. */
@@ -254,10 +317,26 @@ if (tool === "Bash") {
   const raw = String(ti.command ?? "");
   const scanned = unwrapInterpreters(stripEnvPrefix(scannableText(raw)));
 
+  // Your exemptions win outright. Checked before every shipped rule, because the
+  // point of an escape hatch is that it works without asking permission from the
+  // thing you're escaping.
+  for (const r of compile(policy.bash?.allow)) {
+    if (r.re.test(scanned)) {
+      record("allowed", r.reason ?? "exempted by your policy overlay", raw);
+      allow();
+    }
+  }
+
   for (const r of compile(policy.bash?.blocked)) {
     if (r.re.test(scanned)) {
       record("blocked", r.reason, raw);
-      block(r.reason, `Command: ${raw.slice(0, 300)}`);
+      block(
+        r.reason,
+        `Command: ${raw.slice(0, 300)}\n\n` +
+          `If this is wrong for your machine, exempt it in ${USER_POLICY}:\n` +
+          `  { "bash": { "allow": [ { "pattern": "<regex>", "reason": "why" } ] } }\n` +
+          `That file survives plugin updates. KEEL_GUARD_OFF=1 disables the guard entirely.`,
+      );
     }
   }
   for (const r of compile(policy.bash?.confirm)) {

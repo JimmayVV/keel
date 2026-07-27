@@ -216,6 +216,72 @@ describe("blocked: flag and interpreter evasion", () => {
   }
 });
 
+/**
+ * The shipped policy lives in the plugin cache, which `keel update` replaces
+ * wholesale — so a hand-edit there is not an escape hatch, it's a change that
+ * vanishes on the next update. The overlay is the control the user actually
+ * keeps: outside the cache, layered on top, and able to exempt a shipped rule
+ * that is wrong for their machine.
+ */
+describe("user policy overlay", () => {
+  const SLASH = "/";
+  const HOME_RM = "rm -rf /home/jimmy";
+
+  function withOverlay(body) {
+    const dir = mkdtempSync(join(tmpdir(), "keel-overlay-"));
+    const file = join(dir, "policy.json");
+    if (body !== null) writeFileSync(file, body);
+    return { dir, file };
+  }
+  const fire = (command, file) => run({ tool_name: "Bash", tool_input: { command } }, { KEEL_POLICY_FILE: file });
+
+  test("without an overlay, the shipped rule stands", () => {
+    const o = withOverlay(null);
+    assert.equal(fire(HOME_RM, o.file).code, BLOCKED);
+    rmSync(o.dir, { recursive: true, force: true });
+  });
+
+  test("an allow rule exempts a command the shipped policy blocks", () => {
+    const o = withOverlay(
+      JSON.stringify({ bash: { allow: [{ pattern: "^rm -rf /home/jimmy$", reason: "my machine" }] } }),
+    );
+    assert.ok(isAllow(fire(HOME_RM, o.file)), "the user's exemption must win");
+    rmSync(o.dir, { recursive: true, force: true });
+  });
+
+  test("an exemption is narrow — it does not disable the rule", () => {
+    const o = withOverlay(
+      JSON.stringify({ bash: { allow: [{ pattern: "^rm -rf /home/jimmy$", reason: "my machine" }] } }),
+    );
+    assert.equal(fire(`rm -rf ${SLASH}`, o.file).code, BLOCKED, "root must still be blocked");
+    rmSync(o.dir, { recursive: true, force: true });
+  });
+
+  test("an overlay can add rules of its own", () => {
+    const o = withOverlay(
+      JSON.stringify({ bash: { blocked: [{ pattern: "\\bterraform\\s+destroy\\b", reason: "no" }] } }),
+    );
+    assert.equal(fire("terraform destroy -auto-approve", o.file).code, BLOCKED);
+    rmSync(o.dir, { recursive: true, force: true });
+  });
+
+  test("a malformed overlay fails CLOSED and names the file", () => {
+    const o = withOverlay("{ not json");
+    const r = fire("echo hi", o.file);
+    assert.equal(r.code, BLOCKED, "a rule you think is active but isn't is the worse failure");
+    assert.ok(r.stderr.includes(o.file), "the message must name the file to fix");
+    rmSync(o.dir, { recursive: true, force: true });
+  });
+
+  test("a block explains where to override it", () => {
+    const o = withOverlay(null);
+    const r = fire(`rm -rf ${SLASH}`, o.file);
+    assert.match(r.stderr, /exempt it in/);
+    assert.ok(r.stderr.includes(o.file), "the override path must be the one actually in use");
+    rmSync(o.dir, { recursive: true, force: true });
+  });
+});
+
 describe("fail modes", () => {
   test("the opt-out env var disables the guard", () => {
     const r = run({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }, { KEEL_GUARD_OFF: "1" });
