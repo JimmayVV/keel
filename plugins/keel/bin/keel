@@ -22,7 +22,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -618,6 +618,39 @@ function cmdUpdate() {
     return r.ok;
   };
   step("marketplace refreshed", ["plugin", "marketplace", "update"]);
+
+  /**
+   * Move the checkout ourselves, because `marketplace update` may not.
+   *
+   * Observed in the field: `marketplace update` reports success and `git pull`
+   * in that checkout then prints "Already up to date" while origin/main has
+   * moved — the checkout's HEAD isn't tracking the branch it fetched. The result
+   * is a perfectly successful update to a stale target: every downstream check,
+   * including the sha comparison below, agrees you are current because both
+   * sides are equally old.
+   *
+   * Fast-forward only, and never on a dirty tree. This is Claude Code's
+   * directory; nudging a ref forward is the most keel should do to it, and
+   * discarding somebody's local edits is not on the table.
+   */
+  const mp = join(CONFIG_DIR, "plugins", "marketplaces", "keel");
+  if (existsSync(join(mp, ".git"))) {
+    const git = (...a) => spawnSync("git", ["-C", mp, ...a], { encoding: "utf-8", timeout: 60000 });
+    const dirty = (git("status", "--porcelain").stdout ?? "").trim();
+    if (dirty) {
+      console.log(`  ${c.yellow("!")} marketplace checkout has local changes — leaving it alone`);
+    } else {
+      git("fetch", "--quiet", "origin");
+      const before = (git("rev-parse", "HEAD").stdout ?? "").trim();
+      const ff = git("merge", "--ff-only", "origin/HEAD");
+      const after = (git("rev-parse", "HEAD").stdout ?? "").trim();
+      if (before && after && before !== after) {
+        console.log(`  ${c.green("✔")} marketplace checkout advanced ${c.dim(`${before.slice(0, 7)} → ${after.slice(0, 7)}`)}`);
+      } else if (ff.status !== 0 && /diverge|not possible|refusing/i.test(ff.stderr ?? "")) {
+        console.log(`  ${c.yellow("!")} marketplace checkout has diverged from origin — reset it by hand`);
+      }
+    }
+  }
   step("keel updated", ["plugin", "update", "keel@keel"]);
 
   /**
@@ -653,24 +686,37 @@ function cmdUpdate() {
     if (ps?.installed) step(`${extra} updated`, ["plugin", "update", `${extra}@keel`]);
   }
 
-  // A version bump moves the cache path (…/keel/<version>/bin/keel) and leaves
-  // an opted-in ~/.local/bin/keel symlink dangling. Repair only what is
-  // provably ours: a symlink, dangling, pointing into the plugin cache.
+  /**
+   * Repoint the PATH symlink whenever it isn't the installed copy.
+   *
+   * The previous version only repaired a DANGLING link, on the theory that a
+   * version bump removes the old cache directory. It doesn't — an update leaves
+   * both …/keel/0.1.0/ and …/keel/0.2.0/ in place. So the link kept resolving,
+   * kept running the old binary, and the repair never fired. `claude plugin
+   * update` would report success, the plugin really would update, and `keel` on
+   * your PATH stayed weeks behind with nothing to indicate it.
+   *
+   * Resolving rather than dangling is therefore not evidence of health. Compare
+   * against the installed path from installed_plugins.json — Claude Code's own
+   * record of what it installed — and repair on mismatch. Still only ever
+   * touches a symlink that points into the plugin cache; anything else is
+   * somebody's own binary and none of keel's business.
+   */
   const link = join(homedir(), ".local", "bin", "keel");
   try {
     const target = readlinkSync(link);
-    if (!existsSync(target) && target.includes(join("plugins", "cache", "keel"))) {
-      const binDirs = readdirSync(join(CONFIG_DIR, "plugins", "cache", "keel", "keel"), { withFileTypes: true })
-        .filter((d) => d.isDirectory()).map((d) => d.name).sort();
-      const fresh = binDirs.length
-        ? join(CONFIG_DIR, "plugins", "cache", "keel", "keel", binDirs[binDirs.length - 1], "bin", "keel")
-        : null;
-      if (fresh && existsSync(fresh)) {
+    if (target.includes(join("plugins", "cache", "keel"))) {
+      const db = readJson(join(CONFIG_DIR, "plugins", "installed_plugins.json"));
+      const installPath = db.plugins?.["keel@keel"]?.[0]?.installPath;
+      const fresh = installPath ? join(installPath, "bin", "keel") : null;
+
+      if (fresh && existsSync(fresh) && resolve(target) !== resolve(fresh)) {
         unlinkSync(link);
         symlinkSync(fresh, link);
-        console.log(`  ${c.green("✔")} PATH link repaired ${c.dim(`${link} -> ${fresh}`)}`);
-      } else {
-        console.log(`  ${c.yellow("!")} ${link} is dangling and no cache copy was found — re-run install.sh`);
+        console.log(`  ${c.green("✔")} PATH link repointed ${c.dim(`-> ${fresh}`)}`);
+        console.log(`      ${c.dim(`was ${target}`)}`);
+      } else if (!existsSync(target) && !fresh) {
+        console.log(`  ${c.yellow("!")} ${link} is dangling and no installed copy was found — re-run install.sh`);
         problems++;
       }
     }

@@ -9,7 +9,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, existsSync, symlinkSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -41,6 +41,65 @@ function update(w) {
     env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: w.cfg, HOME: w.home },
   });
 }
+
+/**
+ * The failure this suite existed to catch and didn't.
+ *
+ * An update leaves BOTH cache directories in place, so ~/.local/bin/keel kept
+ * resolving — just to the old binary. The repair only fired on a dangling link,
+ * so it never ran: `claude plugin update` reported success, the plugin really
+ * did update, and the `keel` on PATH stayed weeks behind with no symptom.
+ * Resolving is not evidence of health; matching the installed path is.
+ */
+describe("PATH symlink repair", () => {
+  function withLink(w, { linkTo, installPath }) {
+    const cache = join(w.cfg, "plugins", "cache", "keel", "keel");
+    for (const v of ["0.1.0", "0.2.0"]) {
+      mkdirSync(join(cache, v, "bin"), { recursive: true });
+      writeFileSync(join(cache, v, "bin", "keel"), "#!/usr/bin/env node\n");
+    }
+    mkdirSync(join(w.cfg, "plugins"), { recursive: true });
+    writeFileSync(
+      join(w.cfg, "plugins", "installed_plugins.json"),
+      JSON.stringify({ plugins: { "keel@keel": [{ installPath: join(cache, installPath) }] } }),
+    );
+    const link = join(w.home, ".local", "bin", "keel");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(join(cache, linkTo, "bin", "keel"), link);
+    return { link, cache };
+  }
+
+  test("repoints a link that resolves but points at the wrong version", () => {
+    const w = world("[]");
+    const { link, cache } = withLink(w, { linkTo: "0.1.0", installPath: "0.2.0" });
+    const r = update(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /PATH link repointed/);
+    assert.equal(readlinkSync(link), join(cache, "0.2.0", "bin", "keel"), "must follow the installed copy");
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("leaves a correct link alone", () => {
+    const w = world("[]");
+    const { link, cache } = withLink(w, { linkTo: "0.2.0", installPath: "0.2.0" });
+    const r = update(w);
+    assert.doesNotMatch(r.stdout, /PATH link repointed/, "no churn when it is already right");
+    assert.equal(readlinkSync(link), join(cache, "0.2.0", "bin", "keel"));
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("does not touch a link that points outside the plugin cache", () => {
+    const w = world("[]");
+    const own = join(w.root, "my-own-keel");
+    writeFileSync(own, "#!/bin/sh\n");
+    const link = join(w.home, ".local", "bin", "keel");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(own, link);
+    update(w);
+    assert.equal(readlinkSync(link), own, "somebody else's binary is none of keel's business");
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});
 
 describe("keel update", () => {
   test("refreshes the marketplace and updates keel", () => {
