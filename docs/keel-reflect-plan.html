@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>keel-reflect — build plan</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #ffffff; --ink: #1a1a18; --muted: #6b6b66;
+    --line: #e4e4e0; --accent: #3a6b52; --warn: #8a5a2b; --bad: #8f3a3a;
+    --code-bg: #f3f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --panel: #1d1f23; --ink: #e8e8e4; --muted: #9a9a94;
+      --line: #2e3137; --accent: #7fb99a; --warn: #d4a06a; --bad: #d98080;
+      --code-bg: #23262b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 1.25rem 6rem; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 60rem; margin: 0 auto; }
+  header { padding: 3.5rem 0 2rem; border-bottom: 1px solid var(--line); margin-bottom: 2.5rem; }
+  h1 { font-size: 2.1rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  h2 {
+    font-size: 1.3rem; margin: 3rem 0 1rem; letter-spacing: -.01em;
+    padding-bottom: .4rem; border-bottom: 1px solid var(--line);
+  }
+  h3 { font-size: 1.02rem; margin: 2rem 0 .6rem; }
+  p, li { color: var(--ink); }
+  .muted { color: var(--muted); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: .12em .35em; border-radius: 4px; font-size: .89em; }
+  pre {
+    background: var(--code-bg); padding: 1rem 1.1rem; border-radius: 8px;
+    overflow-x: auto; font-size: .84rem; line-height: 1.55; border: 1px solid var(--line);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .rule {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    padding: 1.1rem 1.3rem; border-radius: 8px; margin: 1.5rem 0;
+  }
+  .rule strong { font-size: 1.05rem; }
+  .warnbox { border-left-color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; margin: 1.2rem 0; font-size: .93rem; }
+  th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+  .ok { color: var(--accent); font-weight: 600; }
+  .no { color: var(--bad); font-weight: 600; }
+  .diagram {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1.4rem; overflow-x: auto; margin: 1.5rem 0;
+  }
+  .diagram pre { background: none; border: none; padding: 0; font-size: .8rem; }
+  .phase {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1.2rem 1.4rem; margin: 1.2rem 0;
+  }
+  .phase h3 { margin-top: 0; display: flex; align-items: baseline; gap: .6rem; }
+  .num {
+    background: var(--accent); color: var(--bg); border-radius: 50%;
+    width: 1.6rem; height: 1.6rem; display: inline-flex; align-items: center;
+    justify-content: center; font-size: .82rem; font-weight: 700; flex: none;
+  }
+  .tag {
+    display: inline-block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+    padding: .18em .5em; border-radius: 4px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--code-bg); font-weight: 600;
+  }
+  .status-built { color: var(--accent); border-color: var(--accent); }
+  .status-todo { color: var(--warn); border-color: var(--warn); }
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .88rem; }
+  ul { padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>keel-reflect</h1>
+  <p class="sub">Agentic memory for vanilla Claude Code — self-hosted, multi-machine, and unable to break your editor.</p>
+</header>
+
+<p>This is a <strong>plan for work that does not exist yet</strong>. keel today has the
+substrate for remembering and no mechanism for deriving. Everything below is the design
+for closing that gap, written so you can decide whether it's a weekend or a month before
+committing.</p>
+
+<h2>The one rule everything follows from</h2>
+
+<div class="rule">
+  <strong>Recall is local file reads. Retain is remote LLM work. Never invert it.</strong>
+  <p class="muted" style="margin:.6rem 0 0">Recall sits in the path of every prompt you
+  type — it must be fast, offline-safe, and incapable of failing in a way you notice.
+  Retain is derivation about the past — it can be slow, batched, and running on a machine
+  that is currently switched off.</p>
+</div>
+
+<p>Invert this and your memory stops working when the homelab reboots. That isn't a memory
+system, it's a dependency. Every fault-tolerance property on this page is a consequence of
+that one rule.</p>
+
+<h2>Architecture: the repo is the bus</h2>
+
+<p>The container is <em>not</em> a service your machines call. It's another node on the
+same private git repo — a peer, not a dependency.</p>
+
+<div class="diagram"><pre>
+   desktop  ─────┐
+                 │
+   laptop   ─────┼──────►   data repo (private git)   ◄──────  reflect worker
+                 │                                              (docker, homelab)
+   work box ─────┘          keel/activity/*.jsonl   ──── reads ────►
+    (separate                projects/*/memory/*.md ◄─── writes ────
+     network)                notes/*.md
+
+   recall  ──►  reads local markdown only.  never touches the network.
+   retain  ──►  worker reads log, derives facts, commits markdown, pushes.
+</pre></div>
+
+<p>Your machines never open a connection to the container. They pull markdown from git at
+session start, same as they already do. The worker's output arrives as ordinary memory
+files — indistinguishable from notes you wrote yourself, except that they cite their
+evidence.</p>
+
+<h2>Fault tolerance: why this cannot brick Claude Code</h2>
+
+<table>
+  <thead><tr><th>Failure</th><th>Effect on Claude Code</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Container stopped / homelab powered off</td><td class="ok">None</td><td>Log keeps accruing locally; worker catches up on next run</td></tr>
+    <tr><td>Homelab destroyed permanently</td><td class="ok">None to past memory</td><td>Every derived fact is markdown in git, already cloned to every machine. You lose future derivation only</td></tr>
+    <tr><td>You're on a plane / off-network</td><td class="ok">None</td><td>Recall reads local files. You were never talking to the worker</td></tr>
+    <tr><td>Tailscale down</td><td class="ok">None</td><td>Not in the data path — see below</td></tr>
+    <tr><td>GitHub unreachable</td><td class="ok">None this session</td><td>Sync hook is bounded and fail-soft; local memory unaffected</td></tr>
+    <tr><td>Worker crashes mid-run</td><td class="ok">None</td><td>Log is append-only; worker is a consumer. Next run re-reads</td></tr>
+    <tr><td>Worker writes something wrong</td><td class="ok">One-line edit</td><td>It's markdown in git. Delete the line, or <code>git revert</code></td></tr>
+    <tr><td>Query-recall hook errors or hangs</td><td class="ok">None</td><td>Returns no context, turn proceeds. Ambient recall still works</td></tr>
+  </tbody>
+</table>
+
+<div class="rule warnbox">
+  <strong>The floor</strong>
+  <p class="muted" style="margin:.6rem 0 0">If every single piece of this fails at once,
+  what remains is: Claude Code reads the markdown files in your memory directory. That
+  floor has no moving parts, no network, and no dependencies — and it's the behaviour you
+  already have today.</p>
+</div>
+
+<h2>Where Tailscale actually fits</h2>
+
+<p>You've called Tailscale the backbone, and I'd narrow that. For the <em>data path</em>
+it isn't needed — the worker reaches GitHub, your machines reach GitHub, and nothing
+listens on a port. Putting Tailscale in the data path would add a dependency for no
+capability.</p>
+
+<p>Where it genuinely earns its place:</p>
+
+<ul>
+  <li><strong>Operating the container</strong> — SSH in, read logs, check whether last night's run failed, restart it from a coffee shop.</li>
+  <li><strong>If you later self-host the git remote</strong> instead of GitHub, the tailnet is how the laptop reaches it from outside the house.</li>
+  <li><strong>If you run a local model</strong> for the retain step and want an inference endpoint reachable from anywhere without exposing a port.</li>
+</ul>
+
+<p class="muted">Ops plane, not data plane. That distinction is what keeps the failure
+matrix above green.</p>
+
+<h2>Build walkthrough</h2>
+
+<div class="phase">
+  <h3><span class="num">1</span> Fact format <span class="tag status-todo">not built</span></h3>
+  <p>Before any container, decide what a derived fact looks like on disk. Everything else
+  is plumbing around this.</p>
+<pre><code>---
+claim: Prefers boring, well-understood solutions over clever ones
+kind: derived            # observed | derived
+confidence: 0.6
+first_seen: 2026-07-12
+last_seen: 2026-07-26
+recurrence: 4
+evidence:
+  - 2026-07-12 keel: chose git over a custom sync daemon
+  - 2026-07-19 scoresense: rejected the abstraction, kept duplication
+  - 2026-07-26 keel: deferred Basic Memory rather than add a dependency
+derived_by: keel-reflect
+device: homelab
+---
+
+Across 6 sessions between Jul 12–26 you chose the simpler option four times when
+a more capable one was on the table.
+</code></pre>
+  <p><strong>Why the front matter matters:</strong> <code>kind</code> separates observation
+  from conclusion. <code>evidence</code> is what makes a claim challengeable from first
+  principles — you can go read the sessions it came from. <code>recurrence</code> and
+  <code>confidence</code> stop one fumbled sentence becoming a permanent belief about you.
+  <code>derived_by</code> tells you at a glance whether you wrote it or a machine did.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">2</span> Query recall via <code>UserPromptSubmit</code> <span class="tag status-todo">not built</span></h3>
+  <p>Build this <em>before</em> the worker. It's the half that must never break, it needs
+  no container, and it's independently useful — it makes the memory you already write by
+  hand surface at the right moment.</p>
+<pre><code>// hooks/recall.mjs — runs on every prompt. Local only. Fails to silence.
+{
+  "hookSpecificOutput": {
+    "hookEventName": "UserPromptSubmit",
+    "additionalContext": "Possibly relevant: &lt;facts + citations&gt;"
+  }
+}</code></pre>
+  <p>Hard constraints: no network, no MCP call, a strict time budget, and any error path
+  returns nothing rather than blocking the turn. Ambient recall (the memory index Claude
+  Code loads natively) keeps working regardless.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">3</span> The worker, run manually first <span class="tag status-todo">not built</span></h3>
+  <p>Before Docker, before cron — a script you invoke by hand and read the output of.</p>
+<pre><code>keel-reflect --since 7d --dry-run     # prints proposed facts, writes nothing</code></pre>
+  <p>It reads <code>keel/activity/*.jsonl</code> (never transcript JSONL — undocumented
+  and actively churned), passes it to a model, and emits candidate facts in the format
+  above. Run it against a real week of your log. If the facts it proposes are wrong or
+  banal, you've learned that for the cost of a script rather than a deployment.</p>
+  <p class="muted">This is the step that tells you whether the whole idea is worth it.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">4</span> Idempotence and watermarks <span class="tag status-todo">not built</span></h3>
+  <p>The worker must never re-derive the same week twice, or your notes fill with
+  near-duplicates that each look like independent evidence.</p>
+  <ul>
+    <li>A watermark file in the repo records the last timestamp processed.</li>
+    <li>Re-running over an overlapping window updates <code>recurrence</code> and
+        <code>last_seen</code> on an existing fact rather than writing a new one.</li>
+    <li>Facts are keyed by a stable slug so two machines can't create rival copies.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3><span class="num">5</span> Containerise <span class="tag status-todo">not built</span></h3>
+  <p>Only now does Docker enter, and it stays boring: clone, run on a schedule, push.</p>
+<pre><code>services:
+  keel-reflect:
+    image: keel-reflect:local
+    restart: unless-stopped
+    environment:
+      KEEL_DEVICE: homelab
+      KEEL_DATA_DIR: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      - ./data:/data                       # the cloned data repo
+      - ./ssh:/root/.ssh:ro                # deploy key, read-only
+</code></pre>
+  <p><strong>Credential scope matters.</strong> The container has write access to your
+  memory. Use a GitHub <em>deploy key scoped to that one repo</em>, not a personal access
+  token with account-wide reach. If the homelab is ever compromised, the blast radius
+  should be a single repository.</p>
+  <p>Give it <code>KEEL_DEVICE=homelab</code> and a distinct git author, so you can always
+  tell at a glance what you wrote and what it did.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">6</span> Schedule, then leave it alone <span class="tag status-todo">not built</span></h3>
+  <p>Nightly is plenty. This is derivation about the past — there is no such thing as an
+  urgent insight about last Tuesday. A run is: <code>git pull</code> → read log since
+  watermark → derive → write markdown → commit → push. Your machines pick it up at the
+  next session start.</p>
+</div>
+
+<h2>Kill switch</h2>
+
+<p>Three levels, each one command, none requiring the container to be reachable:</p>
+
+<table>
+  <tbody>
+    <tr><td><code>KEEL_SYNC_OFF=1</code></td><td>Stop syncing entirely. Local memory still works</td></tr>
+    <tr><td><code>docker stop keel-reflect</code></td><td>Stop deriving. Everything already derived stays</td></tr>
+    <tr><td><code>git revert &lt;sha&gt;</code></td><td>Undo a bad batch of facts. It's just markdown in git</td></tr>
+  </tbody>
+</table>
+
+<p>And the nuclear option, which is worth knowing exists: delete the container, delete the
+plugin, and your memory is still a directory of markdown files you can read with
+<code>cat</code>. Nothing here is stored in a format that requires keel to interpret it.</p>
+
+<h2>Where things stand</h2>
+
+<table>
+  <thead><tr><th>Component</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Substrate — per-project memory, synced, union-merged</td><td><span class="tag status-built">built</span></td></tr>
+    <tr><td>Ambient recall — native memory index</td><td><span class="tag status-built">built</span></td></tr>
+    <tr><td>Observation layer — <code>keel/activity/*.jsonl</code></td><td><span class="tag status-built">built</span></td></tr>
+    <tr><td>Transport — pull at SessionStart, push at SessionEnd</td><td><span class="tag status-built">built</span></td></tr>
+    <tr><td>Engine bridge — <code>keel-memory</code> (Basic Memory)</td><td><span class="tag status-built">built</span></td></tr>
+    <tr><td>Fact format with provenance</td><td><span class="tag status-todo">not built</span></td></tr>
+    <tr><td>Query recall — <code>UserPromptSubmit</code></td><td><span class="tag status-todo">not built</span></td></tr>
+    <tr><td>Retain — fact extraction</td><td><span class="tag status-todo">not built</span></td></tr>
+    <tr><td>Driver interface — swappable engines</td><td><span class="tag status-todo">not built</span></td></tr>
+    <tr><td>Container + schedule</td><td><span class="tag status-todo">not built</span></td></tr>
+  </tbody>
+</table>
+
+<p class="muted">Honest summary: keel does recall's substrate well and does not retain at
+all. Everything you remember today, you wrote down yourself.</p>
+
+<h2>Suggested order</h2>
+
+<p>Steps 1–3 are the real project and can be done without Docker, Tailscale, or a homelab.
+They also answer the only question that matters: <em>are the facts it derives any
+good?</em> If the answer is no, you've spent an evening instead of a month. Steps 4–6 are
+deployment, and deployment is the easy part.</p>
+
+<footer>
+  keel · plan for <code>keel-reflect</code> · design rationale in
+  <code>docs/MEMORY-ARCHITECTURE.md</code><br>
+  Nothing described here is implemented. Status table above is accurate as written.
+</footer>
+
+</main>
+</body>
+</html>
