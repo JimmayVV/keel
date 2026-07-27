@@ -159,6 +159,7 @@ if (overlay) {
       zeroAccess: merge("paths", "zeroAccess"),
       readOnly: merge("paths", "readOnly"),
       confirmWrite: merge("paths", "confirmWrite"),
+      noDelete: merge("paths", "noDelete"),
     },
   };
 }
@@ -311,14 +312,40 @@ function record(verdict, reason, subject) {
 }
 
 // ── path rules (Edit / Write / Read) ────────────────────────────────────────
-function globToRe(glob) {
-  const expanded = glob.replace(/^~(?=\/|$)/, homedir());
-  const escaped = expanded.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*");
-  return new RegExp(`^${escaped}$`);
+
+/** `~/x` → `/home/you/x`. Only a leading `~`; `foo~bar` is a filename. */
+function expandHome(p) {
+  return String(p).replace(/^~(?=\/|$)/, homedir());
 }
 
+/**
+ * Glob → RegExp. `*` stays within one path segment; `**` crosses separators.
+ *
+ * The single-star-only version under-matched, silently: `~/.ssh/*` covered
+ * `~/.ssh/id_rsa` but not `~/.ssh/keys/id_rsa`, so a key one directory deeper
+ * than expected was unprotected while the policy claimed to protect the tree. A
+ * rule that looks like it covers a directory and covers only its top level is
+ * worse than no rule, because it buys trust it has not earned.
+ *
+ * Single `*` is kept segment-scoped rather than made recursive, so a policy can
+ * still say "files directly in this directory" — widening every existing `*`
+ * would have been a silent scope change in the other direction.
+ */
+function globToRe(glob) {
+  const escaped = expandHome(glob).replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  // Alternation order matters: `**` must be consumed whole, or the `*` branch
+  // takes half of it and the remainder becomes a stray literal star.
+  const body = escaped.replace(/\*\*|\*/g, (m) => (m === "**" ? ".*" : "[^/]*"));
+  return new RegExp(`^${body}$`);
+}
+
+/**
+ * noDelete is enforced for Bash only (see checkDeletion) — Edit/Write/Read
+ * cannot delete a file, so applying it here would block writes under the guise
+ * of a deletion rule.
+ */
 function checkPath(filePath) {
-  const abs = resolve(String(filePath).replace(/^~(?=\/|$)/, homedir()));
+  const abs = resolve(expandHome(filePath));
   const p = policy.paths ?? {};
   const hit = (list) => (list ?? []).some((g) => globToRe(g).test(abs));
 
@@ -334,6 +361,91 @@ function checkPath(filePath) {
   if (hit(p.confirmWrite)) {
     record("confirm", "write to protected path", abs);
     ask(`[keel] Writing to a protected path requires confirmation:\n\n  ${abs}\n\nProceed?`);
+  }
+}
+
+// ── deletion rules (Bash) ───────────────────────────────────────────────────
+
+/**
+ * `policy.paths.noDelete` shipped declared and never read: checkPath consulted
+ * zeroAccess, readOnly and confirmWrite only, so the policy advertised that
+ * `~/.ssh` and `~/.aws` were protected from deletion and nothing enforced it.
+ * Config that does nothing is the worst kind of security control — it is the
+ * claim without the behaviour.
+ *
+ * IMPLEMENTED RATHER THAN DELETED because the gap it covers is real and nothing
+ * else closes it. The bash `blocked` rules only catch recursive deletes of the
+ * filesystem root, a home directory or a system directory; `rm -f ~/.ssh/id_rsa`
+ * is none of those and sailed through. Native `permissions.deny` cannot help
+ * either — it matches command prefixes, and the key can be any argument.
+ *
+ * BLOCK, not confirm. A write to a credential file is usually recoverable — from
+ * git, a backup, or the file's own contents still being on disk. Deleting a
+ * private key or an AWS credentials file is not: there is nothing to restore
+ * from and no undo. The asymmetry sets the tier. A false positive costs one line
+ * in the user's overlay (bash.allow is checked before this runs, and the block
+ * message says so); a false negative costs a key that cannot be re-derived.
+ *
+ * DELIBERATELY NARROW. Extracting the paths a shell command will delete is not
+ * solvable in general — variables, globs, subshells, `xargs`, `find -exec`,
+ * `$(…)` and a cwd this process cannot know all defeat it. So this does not try.
+ * It reads the obvious shape only: a segment whose command word is a deletion
+ * command, and whose non-flag arguments name a protected path literally. The
+ * known misses are accepted, not overlooked:
+ *   - `cd ~/.ssh && rm id_rsa`      (relative to a cwd the hook cannot see)
+ *   - `rm $KEY`, `rm $(…)`          (unresolvable before the shell runs)
+ *   - `xargs rm`, `find -exec rm`   (target comes from another process)
+ * Catching the obvious cases is worth far more than a parser that pretends to be
+ * exhaustive, because the pretence is what gets trusted.
+ */
+const DELETE_COMMAND = /^(?:rm|rmdir|shred|unlink|srm)$/i;
+
+function deletionTargets(command) {
+  const out = [];
+  // Segment on every shell separator, so `echo hi && rm ~/.ssh/id_rsa` is read
+  // as two commands rather than one command that happens to start with `echo`.
+  for (const segment of command.split(/\n|;|&&|\|\||\||&/)) {
+    const tokens = stripEnvPrefix(segment).trim().match(/'[^']*'|"[^"]*"|\S+/g);
+    if (!tokens) continue;
+    let i = 0;
+    if (/^sudo$/i.test(tokens[0])) i++;
+    if (!DELETE_COMMAND.test((tokens[i] ?? "").replace(/^.*\//, ""))) continue;
+    for (const tok of tokens.slice(i + 1)) {
+      if (tok.startsWith("-")) continue; // a flag, `--` included
+      const bare = expandHome(tok.replace(/^(['"])([\s\S]*)\1$/, "$2")).replace(
+        /^\$\{?HOME\}?(?=\/|$)/,
+        homedir(),
+      );
+      if (/[$`]/.test(bare)) continue; // still unresolved — do not guess
+      out.push(bare);
+    }
+  }
+  return out;
+}
+
+function checkDeletion(command, raw) {
+  const globs = policy.paths?.noDelete ?? [];
+  for (const target of globs.length ? deletionTargets(command) : []) {
+    const abs = resolve(target);
+    const dir = abs.endsWith("/") ? abs : `${abs}/`;
+    for (const g of globs) {
+      // Two shapes count as deleting a protected path: naming it, or naming a
+      // directory that contains it — `rm -rf ~/.ssh` takes every key with it.
+      // The glob's literal prefix (everything before its first wildcard) is the
+      // deepest ancestor the rule can be certain about.
+      const containsProtected = expandHome(g).split("*")[0].startsWith(dir);
+      if (containsProtected || globToRe(g).test(abs)) {
+        record("blocked", "deletion of a protected path", raw);
+        block(
+          "deletion of a path the policy protects",
+          `Path: ${abs}\nRule: paths.noDelete "${g}"\nCommand: ${raw.slice(0, 300)}\n\n` +
+            `Deleting a credential is irreversible, so this is a stop rather than a prompt.\n` +
+            `If this is wrong for your machine, exempt the command in ${USER_POLICY}:\n` +
+            `  { "bash": { "allow": [ { "pattern": "<regex>", "reason": "why" } ] } }\n` +
+            `That file survives plugin updates. KEEL_GUARD_OFF=1 disables the guard entirely.`,
+        );
+      }
+    }
   }
 }
 
@@ -364,6 +476,10 @@ if (tool === "Bash") {
       );
     }
   }
+  // After the shipped block rules, so `rm -rf ~` reports the catastrophe rule
+  // that names it best; before confirm, because a protected deletion is a stop.
+  checkDeletion(scanned, raw);
+
   for (const r of compile(policy.bash?.confirm)) {
     if (r.re.test(scanned)) {
       record("confirm", r.reason, raw);
