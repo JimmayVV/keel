@@ -278,4 +278,4 @@ MIT — see [LICENSE](LICENSE).
 
 Hook patterns descend from [PAI](https://github.com/danielmiessler/PAI) by Daniel Miessler
 (MIT), since renamed LifeOS. Credit where due; this is an independent implementation, not a
-fork.
+fork. [NOTICE](NOTICE) scopes exactly what was derived and carries the upstream licence.
