@@ -231,7 +231,7 @@ problem rather than guarding it. About 600 lines of gating logic stopped existin
 ## Development
 
 ```sh
-node --test plugins/keel/test/*.test.mjs        # 89 tests
+node --test plugins/keel/test/*.test.mjs        # 125 tests
 claude plugin validate .                        # marketplace
 claude plugin validate ./plugins/keel           # each plugin
 claude --plugin-dir ./plugins/keel              # load without installing
