@@ -115,6 +115,7 @@
     "noDelete": [
       "~/.ssh/**",
       "~/.aws/**",
+      "~/.gnupg/**",
       "~/.claude/settings.json"
     ]
   }
