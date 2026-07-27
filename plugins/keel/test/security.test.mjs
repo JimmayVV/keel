@@ -176,11 +176,14 @@ describe("path rules", () => {
  */
 describe("blocked: flag and interpreter evasion", () => {
   const SLASH = "/"; // keeps the literal out of any harness that scans this file
+  // /home/testuser is a stand-in, not the machine running the suite: the rule
+  // matches /home/<anything>, so hard-coding a real account name would make the
+  // test read as machine-specific when it is not.
 
   for (const cmd of [
     `rm -rf --no-preserve-root ${SLASH}`,
     `rm --recursive --force ${SLASH}`,
-    `rm -rf /home/jimmy`,
+    `rm -rf /home/testuser`,
     `rm -rf ~`,
     `find ${SLASH} -delete`,
     `find ${SLASH} -exec rm {} ;`,
@@ -206,9 +209,9 @@ describe("blocked: flag and interpreter evasion", () => {
     "rm -rf /tmp/foo",
     "rm -rf ~/projects/old",
     "rm -rf ./node_modules",
-    "rm -rf /home/jimmy/personal/keel/tmp",
+    "rm -rf /home/testuser/personal/keel/tmp",
     'find . -name "*.tmp" -delete',
-    "find /home/jimmy/x -delete",
+    "find /home/testuser/x -delete",
   ]) {
     test(`still allows ${cmd}`, () => {
       assert.ok(isAllow(bash(cmd)), `${cmd} must not be blocked`);
@@ -270,7 +273,7 @@ describe("message payloads: prose versus command", () => {
  */
 describe("user policy overlay", () => {
   const SLASH = "/";
-  const HOME_RM = "rm -rf /home/jimmy";
+  const HOME_RM = "rm -rf /home/testuser";
 
   function withOverlay(body) {
     const dir = mkdtempSync(join(tmpdir(), "keel-overlay-"));
@@ -288,7 +291,7 @@ describe("user policy overlay", () => {
 
   test("an allow rule exempts a command the shipped policy blocks", () => {
     const o = withOverlay(
-      JSON.stringify({ bash: { allow: [{ pattern: "^rm -rf /home/jimmy$", reason: "my machine" }] } }),
+      JSON.stringify({ bash: { allow: [{ pattern: "^rm -rf /home/testuser$", reason: "my machine" }] } }),
     );
     assert.ok(isAllow(fire(HOME_RM, o.file)), "the user's exemption must win");
     rmSync(o.dir, { recursive: true, force: true });
@@ -296,7 +299,7 @@ describe("user policy overlay", () => {
 
   test("an exemption is narrow — it does not disable the rule", () => {
     const o = withOverlay(
-      JSON.stringify({ bash: { allow: [{ pattern: "^rm -rf /home/jimmy$", reason: "my machine" }] } }),
+      JSON.stringify({ bash: { allow: [{ pattern: "^rm -rf /home/testuser$", reason: "my machine" }] } }),
     );
     assert.equal(fire(`rm -rf ${SLASH}`, o.file).code, BLOCKED, "root must still be blocked");
     rmSync(o.dir, { recursive: true, force: true });
@@ -324,6 +327,148 @@ describe("user policy overlay", () => {
     assert.match(r.stderr, /exempt it in/);
     assert.ok(r.stderr.includes(o.file), "the override path must be the one actually in use");
     rmSync(o.dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Path globs: `*` within a segment, `**` across them.
+ *
+ * `~/.ssh/*` protected ~/.ssh/id_rsa and left ~/.ssh/keys/id_rsa open, so the
+ * policy claimed a directory and covered one level of it. These run against a
+ * fixed HOME so the assertions are about the glob, not about whoever is running
+ * the suite, and with a policy-overlay path that cannot exist so a real
+ * ~/.config/keel/policy.json on the machine cannot change the answer.
+ */
+const FAKE_HOME = { HOME: "/home/testuser", KEEL_POLICY_FILE: "/nonexistent/keel/policy.json" };
+const H = FAKE_HOME.HOME;
+const atHome = (payload) => run(payload, FAKE_HOME);
+const write = (file_path) => atHome({ tool_name: "Write", tool_input: { file_path } });
+const bashAtHome = (command) => atHome({ tool_name: "Bash", tool_input: { command } });
+
+describe("path globs: ** crosses directories, * does not", () => {
+  for (const p of [
+    `${H}/.ssh/id_rsa`,
+    `${H}/.ssh/keys/deploy_key`, // the case `~/.ssh/*` missed
+    `${H}/.aws/sso/cache/abc.json`,
+    `${H}/.gnupg/private-keys-v1.d/ABCD.key`,
+    `${H}/.claude/settings.json`,
+  ]) {
+    test(`asks before writing ${p}`, () => assert.ok(isAsk(write(p)), `should ask: ${p}`));
+  }
+
+  // Widening to ** must not turn a neighbouring name into a match.
+  for (const p of [
+    `${H}/.ssh-backup/id_rsa`,
+    `${H}/.sshfoo`,
+    `${H}/.claude/settings.local.json`, // a literal entry stays literal
+    `${H}/projects/aws/main.tf`,
+    "/tmp/notes.md",
+  ]) {
+    test(`leaves ${p} alone`, () => assert.ok(isAllow(write(p)), `should allow: ${p}`));
+  }
+
+  test("a single * still stops at the segment boundary", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-glob-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(file, JSON.stringify({ paths: { confirmWrite: ["/srv/app/*"] } }));
+    const at = (file_path) =>
+      run({ tool_name: "Write", tool_input: { file_path } }, { ...FAKE_HOME, KEEL_POLICY_FILE: file });
+    assert.ok(isAsk(at("/srv/app/config.yml")), "one segment deep must match");
+    assert.ok(isAllow(at("/srv/app/nested/config.yml")), "* must not cross a separator");
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * paths.noDelete shipped declared and never read — the policy said ~/.ssh and
+ * ~/.aws were protected from deletion and nothing enforced it. Nothing else in
+ * the guard covers this: the bash block rules only see recursive deletes of /,
+ * a home directory or a system directory, and `rm -f ~/.ssh/id_rsa` is none of
+ * those.
+ *
+ * The negatives carry as much weight as the positives here. Extracting deletion
+ * targets from a shell string is unsolvable in general, so the implementation is
+ * narrow on purpose; these pin the edge it is allowed to have.
+ */
+describe("noDelete: deleting a protected path", () => {
+  for (const [label, cmd] of [
+    ["a private key by absolute path", `rm -f ${H}/.ssh/id_rsa`],
+    ["a private key via ~", "rm ~/.ssh/id_ed25519"],
+    ["a key nested deeper than one level", "rm ~/.ssh/keys/deploy_key"],
+    ["a $HOME-relative key", 'rm -f "$HOME/.ssh/id_rsa"'],
+    ["the whole directory that holds them", "rm -rf ~/.ssh"],
+    ["a glob over the directory", "rm -f ~/.ssh/*"],
+    ["aws credentials", "rm ~/.aws/credentials"],
+    ["settings.json", "unlink ~/.claude/settings.json"],
+    ["the directory containing settings.json", "rm -rf ~/.claude"],
+    ["shred rather than rm", "shred -u ~/.ssh/id_rsa"],
+    ["rmdir on the key directory", "rmdir ~/.ssh"],
+    ["under sudo", "sudo rm -f ~/.ssh/id_rsa"],
+    ["with an absolute rm and a -- separator", `/bin/rm -f -- ${H}/.aws/credentials`],
+    ["chained after a harmless command", "echo hi && rm ~/.ssh/id_rsa"],
+    ["hidden inside an interpreter wrapper", 'bash -c "rm ~/.ssh/id_rsa"'],
+  ]) {
+    test(`blocks ${label}`, () => {
+      assert.equal(bashAtHome(cmd).code, BLOCKED, `${cmd} must be blocked`);
+    });
+  }
+
+  test("the block names the path, the rule, and the way to override it", () => {
+    const r = bashAtHome("rm -f ~/.ssh/id_rsa");
+    assert.match(r.stderr, /noDelete/, "the rule that fired must be identifiable");
+    assert.ok(r.stderr.includes(`${H}/.ssh/id_rsa`), "the resolved path must appear");
+    assert.match(r.stderr, /exempt the command in/, "a stop with no exit is a trap");
+  });
+
+  for (const [label, cmd] of [
+    ["a sibling directory with a similar name", "rm -rf ~/.ssh-backup"],
+    ["a same-named directory elsewhere", "rm -rf /tmp/.ssh/id_rsa"],
+    ["an unrelated file under home", "rm -rf ~/projects/old"],
+    ["a neighbour of a protected file", "rm ~/.claude/settings.local.json"],
+    ["reading a key is not deleting it", "cat ~/.ssh/id_rsa"],
+    ["copying a key is not deleting it", "cp ~/.ssh/id_rsa /tmp/k"],
+    ["a command that merely mentions rm", "echo rm ~/.ssh/id_rsa"],
+    ["node_modules, the thing people actually delete", "rm -rf node_modules"],
+  ]) {
+    test(`allows ${label}`, () => {
+      assert.ok(isAllow(bashAtHome(cmd)), `${cmd} must not be blocked`);
+    });
+  }
+
+  test("prose about deleting a key is not deleting a key", () => {
+    const r = bashAtHome(`git commit -m "explain why rm ~/.ssh/id_rsa is now blocked"`);
+    assert.notEqual(r.code, BLOCKED, "writing about a command is not running one");
+  });
+
+  test("a heredoc writing the command to a file is data", () => {
+    const cmd = ["cat > runbook.md <<'MD'", "Step 3: rm ~/.ssh/id_rsa", "MD"].join("\n");
+    assert.ok(isAllow(bashAtHome(cmd)), "documenting a deletion must not trip the rule");
+  });
+
+  test("an overlay can protect a path of its own", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-nodelete-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(file, JSON.stringify({ paths: { noDelete: ["/srv/secrets/**"] } }));
+    const fire = (command) =>
+      run({ tool_name: "Bash", tool_input: { command } }, { ...FAKE_HOME, KEEL_POLICY_FILE: file });
+    assert.equal(fire("rm -f /srv/secrets/a/b.key").code, BLOCKED, "the user's rule must apply");
+    assert.equal(fire("rm -f ~/.ssh/id_rsa").code, BLOCKED, "the shipped rules must survive the merge");
+    assert.ok(isAllow(fire("rm -f /srv/public/a.txt")), "unrelated paths stay untouched");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("an allow exemption still wins, because an escape hatch that argues is not one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-nodelete-allow-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(
+      file,
+      JSON.stringify({ bash: { allow: [{ pattern: "^rm -f ~/\\.ssh/known_hosts$", reason: "mine" }] } }),
+    );
+    const fire = (command) =>
+      run({ tool_name: "Bash", tool_input: { command } }, { ...FAKE_HOME, KEEL_POLICY_FILE: file });
+    assert.ok(isAllow(fire("rm -f ~/.ssh/known_hosts")), "the exemption must win");
+    assert.equal(fire("rm -f ~/.ssh/id_rsa").code, BLOCKED, "and must stay narrow");
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

@@ -6,6 +6,11 @@
     "Patterns are JS regex strings, matched case-insensitively against the Bash",
     "command AFTER heredoc-data removal and env-prefix stripping.",
     "Tiers: blocked = exit 2 (hard stop) | confirm = ask the user | alert = log and allow.",
+    "Path globs: `*` matches within one path segment, `**` crosses separators.",
+    "Use `**` whenever the intent is 'this directory and everything under it' —",
+    "`~/.ssh/*` leaves ~/.ssh/keys/id_rsa unprotected.",
+    "paths.noDelete is enforced for Bash deletion commands only (rm/rmdir/shred/",
+    "unlink/srm naming the path, or naming a directory that contains it).",
     "Derived from PAI's patterns.yaml (Daniel Miessler's PAI, MIT), converted",
     "mechanically rather than retyped."
   ],
@@ -102,14 +107,15 @@
     "zeroAccess": [],
     "readOnly": [],
     "confirmWrite": [
-      "~/.ssh/*",
-      "~/.aws/*",
-      "~/.gnupg/*",
+      "~/.ssh/**",
+      "~/.aws/**",
+      "~/.gnupg/**",
       "~/.claude/settings.json"
     ],
     "noDelete": [
-      "~/.ssh/*",
-      "~/.aws/*",
+      "~/.ssh/**",
+      "~/.aws/**",
+      "~/.gnupg/**",
       "~/.claude/settings.json"
     ]
   }
