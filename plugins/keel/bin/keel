@@ -589,6 +589,34 @@ function cmdUpdate() {
   };
   step("marketplace refreshed", ["plugin", "marketplace", "update"]);
   step("keel updated", ["plugin", "update", "keel@keel"]);
+
+  /**
+   * `claude plugin update` decides staleness from the version string in
+   * plugin.json. keel's rarely moves, so every commit since the last bump is
+   * invisible to it — it reports "already at the latest version" and does
+   * nothing. An update channel that reports success while doing nothing is
+   * worse than no update channel: it means a security fix silently never
+   * reaches the machines that need it.
+   *
+   * So don't trust the report. Compare the commit Claude Code recorded at
+   * install against the commit the marketplace checkout actually holds, and
+   * reinstall when they diverge. Both values come from documented surfaces:
+   * installed_plugins.json and the checkout's own git HEAD.
+   */
+  const wantSha = marketplaceSha();
+  const haveSha = installedSha("keel");
+  if (wantSha && haveSha && wantSha !== haveSha) {
+    console.log(`  ${c.yellow("!")} version-pinned update was a no-op ${c.dim(`(installed ${haveSha.slice(0, 7)}, marketplace ${wantSha.slice(0, 7)})`)}`);
+    const reinstalled =
+      claude(["plugin", "uninstall", "keel@keel"]).ok && claude(["plugin", "install", "keel@keel"]).ok;
+    if (reinstalled && installedSha("keel") === wantSha) {
+      console.log(`  ${c.green("✔")} reinstalled at ${wantSha.slice(0, 7)}`);
+    } else {
+      console.log(`  ${c.red("✖")} could not reinstall — run it by hand:`);
+      console.log(`      ${c.dim("claude plugin uninstall keel@keel && claude plugin install keel@keel")}`);
+      problems++;
+    }
+  }
   PLUGIN_LIST = undefined; // marketplace refresh may have changed the roster
   for (const extra of ["keel-memory", "keel-reflect"]) {
     const ps = pluginState(extra);
@@ -622,6 +650,28 @@ function cmdUpdate() {
     ? `\n${c.red(`${problems} problem(s)`)} — install.sh remains the full-ceremony fallback\n`
     : `\n${c.green("up to date")} ${c.dim("— new sessions pick this up; running sessions keep their startup state")}\n`);
   process.exit(problems ? 1 : 0);
+}
+
+/**
+ * The commit Claude Code recorded when it installed a keel plugin, per
+ * installed_plugins.json. Null when unknown — callers must treat that as
+ * "can't tell" rather than "stale".
+ */
+function installedSha(name) {
+  try {
+    const db = readJson(join(CONFIG_DIR, "plugins", "installed_plugins.json"));
+    return db.plugins?.[`${name}@keel`]?.[0]?.gitCommitSha ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The commit the local marketplace checkout is actually at. Null when unknown. */
+function marketplaceSha() {
+  const dir = join(CONFIG_DIR, "plugins", "marketplaces", "keel");
+  if (!existsSync(join(dir, ".git"))) return null;
+  const r = spawnSync("git", ["-C", dir, "rev-parse", "HEAD"], { encoding: "utf-8", timeout: 15000 });
+  return r.status === 0 ? r.stdout.trim() : null;
 }
 
 /**
