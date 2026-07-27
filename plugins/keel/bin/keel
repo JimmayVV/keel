@@ -252,7 +252,7 @@ const ADAPTERS = {
     flag: "hindsight-url",
     prompt: "Hindsight base URL?",
     defaultValue: () => "http://localhost:8888",
-    prereq: () => ({ ok: false, what: "the keel-reflect adapter (not in v0.1)", fix: "see docs/ROADMAP.md" }),
+    prereq: () => ({ ok: false, what: "the keel-reflect adapter (not in v0.1)", fix: "see docs/MEMORY-ARCHITECTURE.md" }),
     validate: (v) => (/^https?:\/\//.test(v ?? "") ? null : "must be an http(s) URL"),
     postSetup: () => null,
   },

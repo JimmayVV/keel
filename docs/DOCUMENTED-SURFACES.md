@@ -1,12 +1,12 @@
 # Documented surfaces — the durability contract
 
-`rig` builds on Claude Code. Claude Code ships frequently (2.1.199 → 2.1.220
+`keel` builds on Claude Code. Claude Code ships frequently (2.1.199 → 2.1.220
 inside a single week of its own changelog). The only way a harness survives that
 is to depend exclusively on surfaces Anthropic documents and treats as contract.
 
-**The rule: if it isn't in the official docs, `rig` does not read, write, or
+**The rule: if it isn't in the official docs, `keel` does not read, write, or
 parse it.** No exceptions for convenience. A feature that requires an
-undocumented surface is a feature `rig` does not ship.
+undocumented surface is a feature `keel` does not ship.
 
 ## Allowed — documented contract
 
@@ -46,10 +46,15 @@ the central design decision of this project.
 
 ## Enforcing it
 
-`src/surfaces.ts` encodes the allowlist. Any path `rig` touches under the
-Claude config directory is checked against it, and `rig doctor` reports a
-violation as a failure, not a warning. If a future feature needs a new surface,
-it gets added here with a docs link, or it does not ship.
+**Today this is a convention, not a runtime check.** There is no code that
+validates keel's paths against the table above, and `keel doctor` does not
+report violations. The allowlist is enforced by review — a feature needing a new
+surface gets a row here with a docs link, or it does not ship.
+
+An earlier draft of this document claimed a `src/surfaces.ts` that encoded and
+enforced the list. It never existed. Stating a guarantee you do not implement is
+worse than stating none, because a reader budgets trust against it — so this
+section says what is true and the enforcement remains open work.
 
 ## keel's own data
 
