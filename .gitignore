@@ -1,2 +1,5 @@
 node_modules/
 *.keel-backup
+
+# agent worktrees — transient, never part of the project
+.claude/worktrees/

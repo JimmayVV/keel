@@ -3,7 +3,7 @@
 **A thin, durable layer under [Claude Code](https://code.claude.com).** Guardrails at the
 ingest boundary, plus a CLI that wires third-party memory backends — and nothing else.
 
-> **Status:** v0.1, personal tool built in the open. Issues and PRs welcome and may be
+> **Status:** v0.2, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
 
 ---
@@ -85,7 +85,15 @@ for writing documentation.
 
 Policy ships inside the plugin, so it cannot drift from the code that reads it, and
 it **fails closed**: an unreadable or invalid policy blocks Bash rather than
-silently allowing everything. `KEEL_GUARD_OFF=1` is the deliberate escape hatch.
+silently allowing everything.
+
+Because the shipped policy lives in the plugin cache — which updates replace
+wholesale — editing it there isn't a real escape hatch. Yours lives at
+`~/.config/keel/policy.json`, survives updates, and can both add rules and
+**exempt** shipped ones via `bash.allow`, which is checked first and wins
+outright. A block tells you that file's path and the shape to write. An escape
+hatch documented only in the source isn't one. `KEEL_GUARD_OFF=1` still disables
+the guard entirely.
 
 ### Activity log
 
@@ -165,7 +173,13 @@ you:
 keel status    what's active, what's optional, what each option costs   (read-only)
 keel log       your activity records; --json feeds the week skill       (read-only)
 keel doctor    verify prerequisites; exit 1 on problems                 (read-only)
-keel setup     writes the KEEL_* env keys it owns, nothing else
+keel settings  recommended posture, each rule explained and linked
+               (--list reads without applying; nothing is written
+                without a yes, and it only ever appends)
+keel setup     writes the KEEL_* env keys it owns — portable ones to
+               settings.json, machine-specific ones to settings.local.json
+keel join      put this machine on a network: pick where the data repo
+               lives, link it in, record this machine's device name
 keel update    pull the latest keel + any installed bridge plugins
                (the update slice of install.sh; the script stays the
                 full-ceremony path for backup, reset, and first install)
