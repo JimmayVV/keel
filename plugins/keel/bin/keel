@@ -625,6 +625,151 @@ function cmdUpdate() {
 }
 
 /**
+ * Settings keel can advise on but does not own.
+ *
+ * Everything else in this file writes only KEEL_* keys. `permissions` is not
+ * keel's — it is the user's security posture, and a tool that silently edits it
+ * has overstepped. So this table is advice, not configuration: each rule states
+ * what it would change, why, and where the behaviour is documented, and nothing
+ * is written without a yes.
+ *
+ * Two hard constraints follow from not owning the key:
+ *   - only ever APPEND to a permissions array, never remove or reorder
+ *   - show the exact strings before writing them
+ *
+ * `why` is written to be read at 1am by someone deciding whether to accept a
+ * rule they'll live with for a year. Two or three sentences, including the
+ * limitation — a rule whose weaknesses you hid is worse than no rule, because
+ * it buys trust it hasn't earned.
+ */
+const SETTINGS_RULES = [
+  {
+    id: "secret-files",
+    title: "Deny reads of credential files",
+    docs: "https://code.claude.com/docs/en/settings#permissions",
+    why: [
+      "keel's own policy declares ~/.ssh and ~/.aws as protected and then never enforces it —",
+      "the guard reads confirmWrite but not noDelete, and its glob translation stops at one path",
+      "segment, so ~/.ssh/id_rsa is covered while ~/.ssh/keys/id_rsa is not. Claude Code's native",
+      "rules support ** for nested paths and are evaluated before any hook runs, so this closes",
+      "the gap with the mechanism that actually supports it.",
+    ],
+    key: ["permissions", "deny"],
+    values: ["Read(./.env)", "Read(./.env.*)", "Read(~/.ssh/**)", "Read(~/.aws/**)", "Read(~/.gnupg/**)"],
+  },
+  {
+    id: "catastrophic-bash",
+    title: "Deny the catastrophic shell forms",
+    docs: "https://code.claude.com/docs/en/settings#permissions",
+    why: [
+      "A second layer under keel's guard, not a replacement for it. Native rules are glob-only,",
+      "so they cannot see through flag reordering or an `sh -c` wrapper the way the guard's regex",
+      "does — but they run earlier and are not disabled by KEEL_GUARD_OFF. Defense in depth: the",
+      "coarse net catches the obvious shapes even when the hook is off or broken.",
+    ],
+    key: ["permissions", "deny"],
+    values: ["Bash(rm -rf /*)", "Bash(mkfs*)", "Bash(dd if=* of=/dev/*)", "Bash(wipefs*)"],
+  },
+  {
+    id: "destructive-git",
+    title: "Ask before history-rewriting git",
+    docs: "https://code.claude.com/docs/en/settings#permissions",
+    why: [
+      "These are recoverable but expensive, and they are exactly the commands you want a pause on",
+      "rather than a block — sometimes a force-push is genuinely what you meant. `ask` prompts;",
+      "it does not refuse. Worth more now that your memory lives in a git repo a background worker",
+      "also writes to.",
+    ],
+    key: ["permissions", "ask"],
+    values: ["Bash(git push --force*)", "Bash(git push -f*)", "Bash(git reset --hard*)", "Bash(git clean -*f*)"],
+  },
+];
+
+/**
+ * `keel settings` — review the posture keel recommends but will not assume.
+ *
+ * Reports every rule with its rationale and a docs link, shows the exact strings
+ * it would add, and applies only what is accepted. `--list` explains without
+ * touching anything, which is the mode to use when deciding rather than doing.
+ */
+async function cmdSettings(argv) {
+  const listOnly = argv.includes("--list");
+  const assumeYes = argv.includes("--yes");
+  const rl = listOnly || assumeYes || !stdin.isTTY ? null : createInterface({ input: stdin, output: stdout });
+
+  try {
+    console.log(`\n${c.bold("keel settings")} — recommended posture, with reasons\n`);
+    const settings = readSettings();
+    let applied = 0;
+    let pending = 0;
+
+    for (const rule of SETTINGS_RULES) {
+      const [top, sub] = rule.key;
+      const current = settings[top]?.[sub] ?? [];
+      const missing = rule.values.filter((v) => !current.includes(v));
+
+      const mark = missing.length === 0 ? c.green("✔") : c.yellow("○");
+      console.log(`  ${mark} ${c.bold(rule.title)} ${c.dim(`[${rule.id}]`)}`);
+      for (const line of rule.why) console.log(`      ${c.dim(line)}`);
+      console.log(`      ${c.dim("docs: " + rule.docs)}`);
+
+      if (missing.length === 0) {
+        console.log(`      ${c.dim(`already set (${rule.values.length} rules in ${top}.${sub})`)}\n`);
+        continue;
+      }
+
+      console.log(`      ${c.bold(`would add to ${top}.${sub}:`)}`);
+      for (const v of missing) console.log(`        + ${v}`);
+      pending++;
+
+      if (listOnly) {
+        console.log("");
+        continue;
+      }
+
+      const want = assumeYes || (rl && (await ask1(rl, `      Apply? ${c.dim("[y/N]")} `)));
+      if (want !== true && !String(want ?? "").trim().toLowerCase().startsWith("y")) {
+        console.log(`      ${c.dim("skipped")}\n`);
+        continue;
+      }
+
+      // Append only. This is the user's key; keel adds to it and never rewrites it.
+      settings[top] = { ...(settings[top] ?? {}) };
+      settings[top][sub] = [...current, ...missing];
+      applied++;
+      console.log(`      ${c.green("✔")} added ${missing.length}\n`);
+    }
+
+    if (applied > 0) {
+      if (existsSync(SETTINGS)) copyFileSync(SETTINGS, `${SETTINGS}.keel-backup`);
+      mkdirSync(dirname(SETTINGS), { recursive: true });
+      writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
+      console.log(`${c.bold("Written.")} ${c.dim(SETTINGS)}`);
+      console.log(`  ${c.dim(`previous version saved to ${SETTINGS}.keel-backup`)}`);
+      console.log(`  ${c.dim("restart Claude Code to pick up permission changes")}\n`);
+    } else if (listOnly && pending > 0) {
+      console.log(`${c.dim(`${pending} rule group(s) not applied — run 'keel settings' to review interactively`)}\n`);
+    } else if (pending === 0) {
+      console.log(`${c.green("all recommended rules are in place")}\n`);
+    } else {
+      console.log(`${c.dim("nothing changed")}\n`);
+    }
+    return 0;
+  } finally {
+    rl?.close();
+  }
+}
+
+/** Ctrl+D at a prompt means "stop", not "crash". */
+async function ask1(rl, prompt) {
+  try {
+    return await rl.question(prompt);
+  } catch {
+    return "";
+  }
+}
+
+/**
  * `keel join` — put this machine on a network.
  *
  * A network is the set of machines sharing one data repo. Joining is four
@@ -838,6 +983,8 @@ switch (cmd) {
     process.exit((await cmdSetup(process.argv.slice(3))) ? 1 : 0);
   case "join":
     process.exit(await cmdJoin(process.argv.slice(3)));
+  case "settings":
+    process.exit(await cmdSettings(process.argv.slice(3)));
   case "log":
     cmdLog(process.argv.slice(3));
     break;
@@ -855,6 +1002,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel log       what you've been doing   ${c.dim("--days N [--json]")}
   keel setup     interactive wiring
   keel join      put this machine on a network  ${c.dim("--data-dir P --device N --remote URL")}
+  keel settings  recommended posture, with reasons  ${c.dim("--list to read without applying")}
   keel doctor    verify; exit 1 on problems
   keel update    pull the latest keel + bridge plugins
 
