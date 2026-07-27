@@ -17,11 +17,11 @@
         "reason": "Fork bomb (self-replicating process exhaustion)"
       },
       {
-        "pattern": "\\brm\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)\\b\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*(?:/|~|\\$HOME|\\$\\{HOME\\}|/\\*|~/\\*|/home/[^\\s/'\"]+/?|/Users/[^\\s/'\"]+/?)(?=\\s|;|&|\\||'|\"|\\)|$)",
+        "pattern": "\\brm\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)\\b\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*(?:/|~|\\$HOME|\\$\\{HOME\\}|/\\*|~/\\*|/home/[^\\s/'\"]+/?|/Users/[^\\s/'\"]+/?)(?=\\s|;|&|\\||'|\"|`|\\)|$)",
         "reason": "Recursive delete of filesystem root or home directory"
       },
       {
-        "pattern": "\\brm\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)\\b\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*/(?:etc|usr|var|bin|boot|lib|sbin|sys|proc|dev|root)(?=\\s|/|;|&|\\||'|\"|\\)|$)",
+        "pattern": "\\brm\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*(?:-[a-zA-Z]*r[a-zA-Z]*|--recursive)\\b\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+)*/(?:etc|usr|var|bin|boot|lib|sbin|sys|proc|dev|root)(?=\\s|/|;|&|\\||'|\"|`|\\)|$)",
         "reason": "Recursive delete of a critical system directory"
       },
       {

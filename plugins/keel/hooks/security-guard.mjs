@@ -234,6 +234,31 @@ function scannableText(command) {
   return out + command.slice(cursor);
 }
 
+/**
+ * A commit message that *mentions* a destructive command is prose, not a command.
+ *
+ * `git commit -m "don't run rm -rf / on prod"` was blocked before this — the whole
+ * Bash string is scanned, and `-m` carries text. Same distinction the heredoc
+ * logic draws (writing about a command versus running one), different shape, so
+ * the heredoc rules never saw it. It blocked this file's own commit message.
+ *
+ * Deliberately narrow, because this is a hole if it is wrong:
+ *   - only `git` and `gh`, the two commands whose message flags definitionally
+ *     carry prose rather than anything executable
+ *   - only a fully quoted payload, matched to its own closing quote, so
+ *     `git commit -m "msg" && rm -rf /` keeps the second half scannable
+ *   - never when the payload contains $( ), backticks, or ${ }, because a message
+ *     built by command substitution really does execute
+ */
+function stripMessagePayloads(cmd) {
+  const re =
+    /\b(?:git|gh)\b[^\n]*?\s(?:-m|--message|-b|--body|-t|--title|--body-file|-d|--description)(?:=|\s+)(['"])((?:(?!\1)[\s\S])*)\1/g;
+  return cmd.replace(re, (full, _q, payload) => {
+    if (!payload || /\$\(|`|\$\{/.test(payload)) return full; // substitution executes — keep it scannable
+    return full.replace(payload, " ");
+  });
+}
+
 /** `FOO=bar BAZ=qux rm -rf /` must still match the rm rule. */
 function stripEnvPrefix(cmd) {
   return cmd.replace(/^\s*(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
@@ -315,7 +340,7 @@ function checkPath(filePath) {
 // ── dispatch ────────────────────────────────────────────────────────────────
 if (tool === "Bash") {
   const raw = String(ti.command ?? "");
-  const scanned = unwrapInterpreters(stripEnvPrefix(scannableText(raw)));
+  const scanned = unwrapInterpreters(stripEnvPrefix(stripMessagePayloads(scannableText(raw))));
 
   // Your exemptions win outright. Checked before every shipped rule, because the
   // point of an escape hatch is that it works without asking permission from the

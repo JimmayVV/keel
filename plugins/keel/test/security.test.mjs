@@ -217,6 +217,51 @@ describe("blocked: flag and interpreter evasion", () => {
 });
 
 /**
+ * Prose that names a command is not a command.
+ *
+ * `git commit -m "don't run rm -rf / on prod"` was blocked before this — the
+ * whole Bash string is scanned and -m carries text. Same distinction the heredoc
+ * rules draw, different shape, so they never caught it. It blocked this feature's
+ * own commit message.
+ *
+ * The blocked cases matter more than the allowed ones: this is a hole if the
+ * payload stripping is too eager.
+ */
+describe("message payloads: prose versus command", () => {
+  const S = "/";
+  const BT = String.fromCharCode(96);
+  const DANGER = `rm -rf ${S}`;
+
+  for (const cmd of [
+    `git commit -m "warn people not to run ${DANGER} in prod"`,
+    `git commit -m 'never ${DANGER}, obviously'`,
+    `git tag -m "fixes the ${DANGER} false positive" v1.0`,
+    `gh pr create --title "stop blocking ${DANGER} in prose" --body "details"`,
+    `gh issue create --body "repro: someone typed ${DANGER}"`,
+  ]) {
+    test(`does not block prose: ${cmd.slice(0, 42)}…`, () => {
+      // Not-blocked rather than allowed: `gh pr create` legitimately hits the
+      // confirm tier ("publishing local content"), which is a prompt, not a stop.
+      // The property under test is that quoting a dangerous string is not itself
+      // treated as running it.
+      assert.notEqual(bash(cmd).code, BLOCKED, "writing about a command is not running one");
+    });
+  }
+
+  for (const [label, cmd] of [
+    ["a chained command after the message", `git commit -m "msg" && ${DANGER}`],
+    ["command substitution in the message", `git commit -m "$(${DANGER})"`],
+    ["backtick substitution in the message", `git commit -m "${BT}${DANGER}${BT}"`],
+    ["a semicolon-chained command", `git commit -m "safe" ; ${DANGER}`],
+    ["an unrelated command with a quoted arg", `echo hi && ${DANGER}`],
+  ]) {
+    test(`still blocks ${label}`, () => {
+      assert.equal(bash(cmd).code, BLOCKED, `${cmd} must remain blocked`);
+    });
+  }
+});
+
+/**
  * The shipped policy lives in the plugin cache, which `keel update` replaces
  * wholesale — so a hand-edit there is not an escape hatch, it's a change that
  * vanishes on the next update. The overlay is the control the user actually
