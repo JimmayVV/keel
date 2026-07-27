@@ -36,9 +36,10 @@ one format change from silent breakage. Claude Code's own changelog notes a rele
 *"reduced transcript size up to 79×"*: exactly the kind of change that breaks a parser with
 no test to catch it.
 
-The allowlist is enforced in [`src/surfaces.ts`](docs/DOCUMENTED-SURFACES.md), not just
-promised in prose. See [docs/DOCUMENTED-SURFACES.md](docs/DOCUMENTED-SURFACES.md) for the
-full table of what's allowed and what's forbidden, each with a docs link.
+The allowlist is currently a written convention, not a runtime check — there is no code
+that enforces it and `keel doctor` does not verify it. See
+[docs/DOCUMENTED-SURFACES.md](docs/DOCUMENTED-SURFACES.md) for the full table of what's
+allowed and what's forbidden, each with a docs link.
 
 ---
 
@@ -230,7 +231,7 @@ problem rather than guarding it. About 600 lines of gating logic stopped existin
 ## Development
 
 ```sh
-node --test plugins/keel/test/guards.test.mjs   # 10 tests
+node --test plugins/keel/test/*.test.mjs        # 89 tests
 claude plugin validate .                        # marketplace
 claude plugin validate ./plugins/keel           # each plugin
 claude --plugin-dir ./plugins/keel              # load without installing

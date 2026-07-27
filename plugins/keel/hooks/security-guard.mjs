@@ -84,6 +84,22 @@ try {
   allow();
 }
 
+// A file that parses is not the same as a policy that means anything. A policy
+// missing its `bash` section permits every command the guard exists to stop, and
+// a null one throws inside checkPath. Damaged shape gets the same treatment as a
+// damaged file: fail closed for Bash, which is the tier that can destroy things.
+if (!policy || typeof policy !== "object" || !policy.bash || typeof policy.bash !== "object") {
+  if (tool === "Bash") {
+    block(
+      "security policy is malformed — failing closed",
+      `Expected an object with a "bash" section.\n` +
+        `Path: ${resolve(HERE, "..", "policy", "security.json")}\n` +
+        `Reinstall the plugin, or set KEEL_GUARD_OFF=1 to proceed deliberately without a guard.`,
+    );
+  }
+  allow();
+}
+
 /** Compile once, fail closed on a bad pattern rather than skipping it silently. */
 function compile(rules) {
   return (rules ?? []).map((r) => {
@@ -160,6 +176,27 @@ function stripEnvPrefix(cmd) {
   return cmd.replace(/^\s*(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, "");
 }
 
+/**
+ * `bash -c "rm -rf /"` and `python3 -c "os.system('rm -rf /')"` hide the real
+ * command inside a quoted argument, where no pattern written against shell
+ * syntax can reach it.
+ *
+ * Append each payload rather than substituting it, so the wrapper stays visible
+ * to any rule that cares about the wrapper itself. Appending can only add
+ * matches, never remove one — the conservative direction for a guard.
+ */
+function unwrapInterpreters(cmd) {
+  const re =
+    /(?:^|[\s;&|(])(?:sudo\s+)?(?:\S*\/)?(?:sh|bash|zsh|ksh|dash|python[0-9.]*|perl|ruby|node|deno|bun)\s+(?:-[^\s-]\S*\s+)*-c\s*(?:'([^']*)'|"([^"]*)"|(\S+))/gi;
+  let out = cmd;
+  let m;
+  while ((m = re.exec(cmd)) !== null) {
+    const payload = m[1] ?? m[2] ?? m[3];
+    if (payload) out += "\n" + payload;
+  }
+  return out;
+}
+
 // ── audit trail ─────────────────────────────────────────────────────────────
 function record(verdict, reason, subject) {
   try {
@@ -215,7 +252,7 @@ function checkPath(filePath) {
 // ── dispatch ────────────────────────────────────────────────────────────────
 if (tool === "Bash") {
   const raw = String(ti.command ?? "");
-  const scanned = stripEnvPrefix(scannableText(raw));
+  const scanned = unwrapInterpreters(stripEnvPrefix(scannableText(raw)));
 
   for (const r of compile(policy.bash?.blocked)) {
     if (r.re.test(scanned)) {

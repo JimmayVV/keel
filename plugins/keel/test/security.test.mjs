@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, copyFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), "..", "hooks", "security-guard.mjs");
@@ -168,6 +168,54 @@ describe("path rules", () => {
   });
 });
 
+/**
+ * The block rules are only worth the exit code if they survive the obvious
+ * evasions. `rm -rf /` is the one form GNU rm already refuses on its own, so a
+ * guard that catches only that shape catches the harmless case and misses every
+ * dangerous one.
+ */
+describe("blocked: flag and interpreter evasion", () => {
+  const SLASH = "/"; // keeps the literal out of any harness that scans this file
+
+  for (const cmd of [
+    `rm -rf --no-preserve-root ${SLASH}`,
+    `rm --recursive --force ${SLASH}`,
+    `rm -rf /home/jimmy`,
+    `rm -rf ~`,
+    `find ${SLASH} -delete`,
+    `find ${SLASH} -exec rm {} ;`,
+  ]) {
+    test(`blocks ${cmd}`, () => {
+      assert.equal(bash(cmd).code, BLOCKED, `${cmd} must be blocked`);
+    });
+  }
+
+  for (const cmd of [
+    `bash -c "rm -rf ${SLASH}"`,
+    `sh -c 'rm -rf ${SLASH}'`,
+    `python3 -c "import os;os.system('rm -rf ${SLASH}')"`,
+    `sudo bash -c "rm -rf /var"`,
+  ]) {
+    test(`sees through the wrapper: ${cmd}`, () => {
+      assert.equal(bash(cmd).code, BLOCKED, `${cmd} must be blocked`);
+    });
+  }
+
+  // The widened patterns must not start eating ordinary work.
+  for (const cmd of [
+    "rm -rf /tmp/foo",
+    "rm -rf ~/projects/old",
+    "rm -rf ./node_modules",
+    "rm -rf /home/jimmy/personal/keel/tmp",
+    'find . -name "*.tmp" -delete',
+    "find /home/jimmy/x -delete",
+  ]) {
+    test(`still allows ${cmd}`, () => {
+      assert.ok(isAllow(bash(cmd)), `${cmd} must not be blocked`);
+    });
+  }
+});
+
 describe("fail modes", () => {
   test("the opt-out env var disables the guard", () => {
     const r = run({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }, { KEEL_GUARD_OFF: "1" });
@@ -192,4 +240,29 @@ describe("fail modes", () => {
     assert.equal(r.status, 2, "no policy must block, not allow");
     assert.match(r.stderr, /failing closed/);
   });
+
+  // A file that parses is not a policy that means anything. These two shapes
+  // used to fail OPEN: valid JSON with no `bash` key permitted everything, and
+  // `null` threw a TypeError, which the harness treats as non-blocking.
+  for (const [label, body] of [
+    ["valid JSON with no bash section", '{"version":"1.0"}'],
+    ["a null policy", "null"],
+    ["an array", "[]"],
+    ["a policy whose bash section is a string", '{"bash":"nope"}'],
+  ]) {
+    test(`${label} fails CLOSED for Bash`, () => {
+      const bare = mkdtempSync(join(tmpdir(), "keel-shape-"));
+      mkdirSync(join(bare, "hooks"), { recursive: true });
+      mkdirSync(join(bare, "policy"), { recursive: true });
+      copyFileSync(HOOK, join(bare, "hooks", "security-guard.mjs"));
+      writeFileSync(join(bare, "policy", "security.json"), body);
+      const r = spawnSync(process.execPath, [join(bare, "hooks", "security-guard.mjs")], {
+        input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "echo hi" } }),
+        encoding: "utf-8",
+      });
+      rmSync(bare, { recursive: true, force: true });
+      assert.equal(r.status, 2, `${label} must block, not allow`);
+      assert.match(r.stderr, /malformed|failing closed/);
+    });
+  }
 });

@@ -41,13 +41,14 @@ function world(pluginListJson) {
   return { root, bin, cfg };
 }
 
-function doctor(w) {
+function doctor(w, extraEnv = {}) {
   return spawnSync(process.execPath, [KEEL, "doctor"], {
     encoding: "utf-8",
     env: {
       ...process.env,
       PATH: `${w.bin}:${process.env.PATH}`,
       CLAUDE_CONFIG_DIR: w.cfg,
+      ...extraEnv,
     },
   });
 }
@@ -97,6 +98,45 @@ describe("doctor checks the bridge plugin, not just the env var", () => {
     const r = doctor(w);
     assert.equal(r.status, 0, r.stdout);
     assert.match(r.stdout, /plugin state unknown/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});
+
+/**
+ * The activity log fails silently by design — the hook swallows write errors so
+ * a broken directory can never break a session. That makes doctor the only place
+ * the failure can surface, and it was not looking. A dead symlink after a sync,
+ * or a read-only mount, otherwise costs weeks of capture with nothing to notice.
+ */
+describe("doctor probes that the activity log is actually writable", () => {
+  test("writable directory -> reported green", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /activity log writable/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("read-only directory -> problem, not 'all good'", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const ro = join(w.root, "readonly");
+    mkdirSync(ro);
+    chmodSync(ro, 0o555);
+    const r = doctor(w, { KEEL_ACTIVITY_DIR: ro });
+    chmodSync(ro, 0o755); // so cleanup can remove it
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /activity log is NOT writable/);
+    assert.doesNotMatch(r.stdout, /all good/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("path occupied by a regular file -> problem", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const notADir = join(w.root, "not-a-dir");
+    writeFileSync(notADir, "");
+    const r = doctor(w, { KEEL_ACTIVITY_DIR: notADir });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /activity log is NOT writable/);
     rmSync(w.root, { recursive: true, force: true });
   });
 });

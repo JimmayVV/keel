@@ -419,6 +419,28 @@ function cmdDoctor() {
     problems++;
   }
 
+  // The activity log is the reason most people run keel, and it is the one part
+  // that fails silently by design: the hook swallows write errors so a broken
+  // directory can never break a session. That trade is right for the hook and
+  // wrong for doctor, whose entire job is to be noisy. A dead symlink or a
+  // read-only mount otherwise costs weeks of capture with nothing to notice.
+  {
+    const dir = activityDir();
+    const probe = join(dir, ".keel-write-probe");
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(probe, "");
+      unlinkSync(probe);
+      console.log(`  ${c.green("✔")} activity log writable ${c.dim(dir.replace(homedir(), "~"))}`);
+    } catch (e) {
+      console.log(`  ${c.red("✖")} activity log is NOT writable — nothing is being recorded`);
+      console.log(`      path: ${dir}`);
+      console.log(`      error: ${String(e?.code ?? e?.message ?? e)}`);
+      console.log(`      fix: check permissions; if ${join(CONFIG_DIR, "keel").replace(homedir(), "~")} is a symlink, check its target exists`);
+      problems++;
+    }
+  }
+
   for (const [, a] of Object.entries(ADAPTERS)) {
     const val = env[a.envKey];
     if (!val) {
