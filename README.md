@@ -176,10 +176,9 @@ keel doctor    verify prerequisites; exit 1 on problems                 (read-on
 keel settings  recommended posture, each rule explained and linked
                (--list reads without applying; nothing is written
                 without a yes, and it only ever appends)
-keel setup     writes the KEEL_* env keys it owns — portable ones to
-               settings.json, machine-specific ones to settings.local.json
-keel join      put this machine on a network: pick where the data repo
-               lives, link it in, record this machine's device name
+keel setup     names this machine and wires the adapters — portable keys
+               to settings.json, machine-specific ones to settings.local.json
+               (--device <name> sets the activity-log device non-interactively)
 keel update    pull the latest keel + any installed bridge plugins
                (the update slice of install.sh; the script stays the
                 full-ceremony path for backup, reset, and first install)
@@ -215,24 +214,28 @@ whose job is automation but which can only be driven by a human isn't automation
 
 See [docs/NETWORKING.md](docs/NETWORKING.md) for the practical setup. In short:
 **features need no sync** — every machine installs the same plugin from the same
-marketplace — while **data** (memory, activity, preferences) travels in a private
-repo of your own. The activity log is scoped per month *and per device* precisely
-so it can be synced without ever conflicting.
+marketplace — and **memory is whatever adapter that machine points at.** keel
+does not sync memory, because the adapter already decides whether it's shared.
 
-A **network** is a set of machines sharing one data repo. Your personal machines are one
-network; your work machines are a different one. They are not connected, they don't know
-about each other, and keel has no concept that spans them — the same way two Tailscale
-tailnets or two Google accounts don't meet.
+A **network** is a set of machines pointed at the same memory backend. A local
+adapter is a network of one; a self-hosted shared instance is a network of
+several. Your work machines are a different network — a different backend, or
+none. They are not connected and keel has no concept that spans them.
 
 ```
         ┌──────── keel (this repo) ────────┐
         │    features flow downward only    │
         ▼                                   ▼
-┌───────────────────┐          ┌───────────────────┐
-│ network: personal │ ← never  │ network: work     │
-│ data: your repo   │  meets → │ data: their repo  │
-└───────────────────┘          └───────────────────┘
+┌────────────────────┐        ┌────────────────────┐
+│ personal           │ ←never │ work               │
+│ shared instance    │ meets→ │ local adapter only │
+└────────────────────┘        └────────────────────┘
 ```
+
+keel used to ship a git-repo sync for memory and instructions. It was removed:
+once an adapter provides the sharing, a second sharing mechanism is two stores
+with no rule for which one wins. One value still differs per machine — the
+device name in `settings.local.json` — and that is the whole of it.
 
 There is deliberately **no bridge, no export, and no sanitiser.** An earlier design kept
 features and data in one repo, which forced an elaborate gated export — with a scanner that

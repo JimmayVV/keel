@@ -94,19 +94,6 @@ for c in node git; do
 done
 if command -v claude >/dev/null 2>&1; then ok "claude $(claude --version 2>&1 | head -1)"; else no "claude missing"; MISSING+=(claude); fi
 
-# Per-project memory is keyed by the project's ABSOLUTE path: /home/jo/web/app
-# becomes projects/-home-jo-web-app. Machines that share memory must therefore
-# agree on the shape of $HOME, or a machine looks up a slug the other never
-# writes. Standalone installs don't care; machines joining a network do.
-case "$HOME" in
-  /home/*) ok "home layout $HOME" ;;
-  *)
-    warn "home is $HOME, not /home/<user>"
-    dim "Per-project memory is keyed by absolute path, so this machine will not"
-    dim "find memory synced from a /home/<user> machine, or vice versa."
-    dim "Harmless standalone; a real problem if you are joining an existing network."
-    ;;
-esac
 
 if [ ${#MISSING[@]} -gt 0 ]; then
   printf '\n'; warn "keel needs these first. Run the right line yourself — this script never sudos:"
@@ -279,16 +266,14 @@ if [ -n "$KEELBIN" ] && [ "$DRY" = 0 ]; then
   node "$KEELBIN" status
   printf '\n'
 
-  # Joining a network is the step that used to be a page of manual symlink
-  # commands in NETWORKING.md. `keel join` asks where the repo goes (defaulting
-  # under XDG data, not $HOME), moves the shared pieces in, links them back, and
-  # records the two machine-local values. Idempotent, so a re-run is harmless.
-  dim "A network is the set of machines sharing one data repo — memory,"
-  dim "instructions and activity follow you between them."
-  if ask "Join or create a data network now?" y; then
-    node "$KEELBIN" join
+  # Name this machine. The activity log scopes files by month and device, and
+  # the fallback is hostname() — which on WSL is the Windows machine name, so
+  # two boxes can collide silently. One prompt now beats finding a month of work
+  # attributed to the wrong machine later.
+  if ask "Name this machine for the activity log?" y; then
+    node "$KEELBIN" setup --skip memory,reflect
   else
-    dim "later:  keel join"
+    dim "later:  keel setup --device <name>"
   fi
 
   if ask "Configure optional adapters now? (interactive)" n; then node "$KEELBIN" setup; fi
