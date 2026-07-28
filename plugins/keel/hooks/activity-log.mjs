@@ -142,6 +142,51 @@ const base = () => {
   };
 };
 
+/**
+ * Did this session ever carry a prompt?
+ *
+ * THE MEASUREMENT THIS EXISTS FOR
+ * On one machine over two days: 261 sessions reached SessionEnd, and 2 of them
+ * had ever seen a user prompt. The other 259 are subagents, worktree agents,
+ * aborted starts, and any nested `claude` a tool spawned. Every one of them was
+ * writing an `end` record about nothing.
+ *
+ * THIS IS ALSO THE RE-ENTRANCY GUARD
+ * A retain hook on SessionEnd has the same shape and a much worse failure mode.
+ * Hindsight's own claude_code provider documents the hazard from the other side:
+ * it redirects CLAUDE_CONFIG_DIR for the `claude` it spawns specifically so
+ * "operator-installed plugins and their Stop hooks do not fire inside our
+ * LLM-call subprocesses. Without this, retain/reflect/consolidation LLM calls
+ * would trigger a Stop-hook retain of the subprocess." Retain triggering retain.
+ *
+ * The tempting fix is to detect nesting — walk the process tree, sniff for a
+ * parent `claude`. That is an undocumented surface and keel does not read those.
+ * It is also unnecessary: a subprocess spawned to perform extraction has no user
+ * prompt, so gating on content catches it without knowing it was nested. One
+ * mechanism, both problems, nothing undocumented.
+ *
+ * Costs nothing to be wrong in the safe direction: a false negative loses one
+ * `end` record, which closes nothing anybody reads.
+ */
+function sessionHasContent(sessionId) {
+  const id = String(sessionId ?? "").slice(0, 8);
+  if (!id) return false;
+  try {
+    // Current month only. A session spanning a month boundary loses its `end`
+    // record, which is cheaper than reading every file on every subagent exit.
+    const raw = readFileSync(logFile(activityDir()), "utf-8");
+    for (const line of raw.split("\n")) {
+      // Cheap reject first — most lines belong to other sessions.
+      if (!line.includes(id)) continue;
+      try {
+        const r = JSON.parse(line);
+        if (r.session === id && (r.kind === "ask" || r.kind === "said")) return true;
+      } catch { /* a torn line is not evidence either way */ }
+    }
+  } catch { /* no log yet — nothing has been said by definition */ }
+  return false;
+}
+
 try {
   switch (event) {
     case "UserPromptSubmit": {
@@ -163,6 +208,9 @@ try {
       break;
     }
     case "SessionEnd": {
+      // Nothing said, nothing to close. See sessionHasContent above for why
+      // this is the guard a retain hook needs, not just log hygiene.
+      if (!sessionHasContent(input?.session_id)) break;
       write({ kind: "end", ...base(), reason: String(input?.reason ?? "other") });
       break;
     }

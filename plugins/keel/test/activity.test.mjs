@@ -120,3 +120,75 @@ describe("security guard audit file naming", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+/**
+ * The measurement behind this: 261 sessions reached SessionEnd on one machine
+ * over two days, and 2 had ever seen a prompt. The rest were subagents,
+ * worktree agents, aborted starts, and nested `claude` invocations — every one
+ * writing an `end` record about nothing.
+ *
+ * It matters more than log tidiness. A retain hook on the same event and the
+ * same 260 empty sessions pays a fixed ~3.4k-token extraction prompt each time,
+ * which measured out at roughly thirty times the cost of the real work. This
+ * gate is the difference.
+ */
+describe("SessionEnd is gated on the session having said anything", () => {
+  const session = "abc12345";
+
+  function endHook(dir, id = session) {
+    return runHook("activity-log.mjs", {
+      hook_event_name: "SessionEnd",
+      reason: "other",
+      cwd: tmpdir(),
+      session_id: id,
+    }, { KEEL_ACTIVITY_DIR: dir, KEEL_DEVICE: "testbox" });
+  }
+
+  test("a session that never carried a prompt writes no end record", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-act-"));
+    endHook(dir);
+    assert.equal(readAll(dir).length, 0, "a subagent exit is not activity");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a session that carried a prompt still closes normally", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-act-"));
+    runHook("activity-log.mjs", {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "what is the status of this branch?",
+      cwd: tmpdir(),
+      session_id: session,
+    }, { KEEL_ACTIVITY_DIR: dir, KEEL_DEVICE: "testbox" });
+    endHook(dir);
+    const kinds = readAll(dir).map((r) => r.kind);
+    assert.deepEqual(kinds, ["ask", "end"], "a real session must still be closed");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("one session's activity does not license another's end record", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-act-"));
+    runHook("activity-log.mjs", {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "a real question from the parent session",
+      cwd: tmpdir(),
+      session_id: session,
+    }, { KEEL_ACTIVITY_DIR: dir, KEEL_DEVICE: "testbox" });
+    endHook(dir, "def67890");   // a subagent exiting alongside a live session
+    const ends = readAll(dir).filter((r) => r.kind === "end");
+    assert.equal(ends.length, 0, "the gate must be per-session, not per-file");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("an assistant turn alone is enough to close the session", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-act-"));
+    runHook("activity-log.mjs", {
+      hook_event_name: "Stop",
+      last_assistant_message: "x".repeat(60),
+      cwd: tmpdir(),
+      session_id: session,
+    }, { KEEL_ACTIVITY_DIR: dir, KEEL_DEVICE: "testbox" });
+    endHook(dir);
+    assert.ok(readAll(dir).some((r) => r.kind === "end"));
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
