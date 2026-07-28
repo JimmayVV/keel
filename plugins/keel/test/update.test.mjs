@@ -155,6 +155,90 @@ describe("PATH entry migration", () => {
   });
 });
 
+/**
+ * Reinstalling resets a plugin to its manifest default, which is not the state
+ * it was in. Found by running scripts/bootstrap.sh on a real machine: it did
+ * uninstall+install and silently disabled keel-memory, because adapters ship
+ * `defaultEnabled: false` deliberately. The repair broke what it was repairing,
+ * and the only symptom was an adapter that quietly stopped working.
+ *
+ * The stub's roster therefore has to change across the reinstall — reporting a
+ * fixed state would pass no matter what the code did.
+ */
+describe("reinstall preserves enablement", () => {
+  function divergentWorld() {
+    const root = mkdtempSync(join(tmpdir(), "keel-enable-"));
+    const bin = join(root, "bin");
+    const cfg = join(root, "cfg");
+    const home = join(root, "home");
+    for (const d of [bin, cfg, home]) mkdirSync(d);
+    const log = join(root, "calls.log");
+
+    const before = JSON.stringify([{ id: "keel@keel", enabled: true }]);
+    const after = JSON.stringify([{ id: "keel@keel", enabled: false }]);
+    writeFileSync(
+      join(bin, "claude"),
+      `#!/bin/sh
+echo "$@" >> '${log}'
+if [ "$1 $2 $3" = "plugin list --json" ]; then
+  if grep -q "plugin uninstall" '${log}' 2>/dev/null; then printf '%s' '${after}'; else printf '%s' '${before}'; fi
+fi
+exit 0
+`,
+    );
+    chmodSync(join(bin, "claude"), 0o755);
+
+    // A marketplace checkout whose HEAD differs from the recorded install sha,
+    // which is what puts cmdUpdate on the reinstall path at all.
+    const mp = join(cfg, "plugins", "marketplaces", "keel");
+    mkdirSync(mp, { recursive: true });
+    const git = (...a) => spawnSync("git", ["-C", mp, ...a], { encoding: "utf-8" });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.test");
+    git("config", "user.name", "t");
+    writeFileSync(join(mp, "marker"), "x");
+    git("add", "-A");
+    git("commit", "-qm", "seed");
+
+    const install = join(cfg, "plugins", "cache", "keel", "keel", "0.2.0");
+    mkdirSync(join(install, "bin"), { recursive: true });
+    writeFileSync(join(install, "bin", "keel"), "#!/usr/bin/env node\n");
+    writeFileSync(
+      join(cfg, "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        plugins: { "keel@keel": [{ installPath: install, gitCommitSha: "0".repeat(40) }] },
+      }),
+    );
+
+    return { root, bin, cfg, home, log };
+  }
+
+  test("re-enables keel when the reinstall reset it to the manifest default", () => {
+    const w = divergentWorld();
+    const r = update(w);
+    const calls = readFileSync(w.log, "utf-8");
+    assert.match(calls, /plugin uninstall keel@keel/, "should have taken the reinstall path");
+    assert.match(calls, /plugin enable keel@keel/, "must restore the enablement the reinstall dropped");
+    assert.match(r.stdout, /re-enabled/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("does not enable a plugin that was already disabled", () => {
+    const w = divergentWorld();
+    // Roster reports disabled both before and after — nothing to restore.
+    writeFileSync(
+      join(w.bin, "claude"),
+      `#!/bin/sh\necho "$@" >> '${w.log}'\n` +
+        `if [ "$1 $2 $3" = "plugin list --json" ]; then printf '%s' '[{"id":"keel@keel","enabled":false}]'; fi\nexit 0\n`,
+    );
+    chmodSync(join(w.bin, "claude"), 0o755);
+    update(w);
+    const calls = readFileSync(w.log, "utf-8");
+    assert.doesNotMatch(calls, /plugin enable/, "a deliberate opt-out must survive a repair");
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});
+
 describe("keel update", () => {
   test("refreshes the marketplace and updates keel", () => {
     const w = world("[]");

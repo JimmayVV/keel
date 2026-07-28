@@ -740,8 +740,30 @@ function cmdUpdate() {
   const haveSha = installedSha("keel");
   if (wantSha && haveSha && wantSha !== haveSha) {
     console.log(`  ${c.yellow("!")} version-pinned update was a no-op ${c.dim(`(installed ${haveSha.slice(0, 7)}, marketplace ${wantSha.slice(0, 7)})`)}`);
+
+    /**
+     * Reinstalling resets a plugin to its manifest default, which is not the
+     * same as the state it was in. Observed on a real machine via
+     * scripts/bootstrap.sh, which does the same uninstall+install: it silently
+     * disabled keel-memory, because adapters ship `defaultEnabled: false` on
+     * purpose. The repair broke the thing it was repairing, and the only
+     * symptom was an adapter that quietly stopped working.
+     *
+     * keel's own manifest has no defaultEnabled, so today it survives — but a
+     * repair step that depends on a manifest field staying absent is a trap
+     * set for later. Capture enablement, restore it.
+     */
+    const wasEnabled = pluginState("keel")?.enabled;
     const reinstalled =
       claude(["plugin", "uninstall", "keel@keel"]).ok && claude(["plugin", "install", "keel@keel"]).ok;
+
+    PLUGIN_LIST = undefined; // the roster changed under us
+    if (reinstalled && wasEnabled && pluginState("keel")?.enabled === false) {
+      claude(["plugin", "enable", "keel@keel"]);
+      PLUGIN_LIST = undefined;
+      console.log(`  ${c.green("✔")} re-enabled ${c.dim("(reinstall had reset it to the manifest default)")}`);
+    }
+
     if (reinstalled && installedSha("keel") === wantSha) {
       console.log(`  ${c.green("✔")} reinstalled at ${wantSha.slice(0, 7)}`);
     } else {
