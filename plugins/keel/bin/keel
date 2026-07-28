@@ -237,6 +237,7 @@ const ADAPTERS = {
   },
   reflect: {
     plugin: "keel-reflect",
+    externallyWired: () => findMcpServer(/hindsight/i),
     title: "Reflection (Hindsight)",
     blurb: "Memory that revises its own conclusions over time, in the background.",
     available: false,
@@ -258,6 +259,66 @@ const ADAPTERS = {
     postSetup: () => null,
   },
 };
+
+/**
+ * Find an MCP server matching a pattern, and say what scope it is wired at.
+ *
+ * WHY THIS EXISTS
+ * doctor reported "Reflection (Hindsight) — not configured" on a machine where
+ * Hindsight was demonstrably working: recall and reflect had both been used
+ * minutes earlier. Both statements were true at once. keel's own adapter
+ * (KEEL_HINDSIGHT_URL plus the keel-reflect plugin) was cut before v0.1 and
+ * never shipped, so from keel's side nothing was configured — while the
+ * instance had been wired straight into Claude Code as an MCP server, which
+ * keel neither manages nor looked for.
+ *
+ * Reporting only on the parts keel owns, and phrasing it as though it were the
+ * whole picture, is how a verify command teaches you to stop believing it. keel
+ * does not manage this wiring and should not pretend to; it should say that it
+ * sees it and that somebody else owns it.
+ *
+ * SCOPE IS MOST OF THE VALUE
+ * `claude mcp add` defaults to *local* scope: the server is registered for the
+ * one directory the command ran in and nowhere else. Adding it from $HOME
+ * therefore yields a server that is connected, healthy, passes `claude mcp
+ * list` — and is invisible in every repo you actually work in, with no error
+ * raised anywhere. Naming the scope is the difference between "it's wired" and
+ * "it's wired somewhere you will never be standing".
+ *
+ * PRIVACY
+ * Reads the mcpServers maps and nothing else. That file also carries an oauth
+ * account, a user id and a machine id; keel has no business with any of them,
+ * so only a server name and a URL host ever leave this function.
+ */
+function findMcpServer(pattern) {
+  let cfg;
+  try {
+    cfg = JSON.parse(readFileSync(join(homedir(), ".claude.json"), "utf-8"));
+  } catch {
+    return null; // absent, unreadable, or a shape we do not recognise
+  }
+  const matches = (name, s) => pattern.test(name) || pattern.test(String(s?.url ?? ""));
+  for (const [name, s] of Object.entries(cfg?.mcpServers ?? {})) {
+    if (matches(name, s)) return { name, url: String(s?.url ?? ""), scope: "user" };
+  }
+  // Project scope second: a user-scope entry is the one that works everywhere,
+  // so if both exist the broader one is the honest thing to report.
+  for (const [dir, proj] of Object.entries(cfg?.projects ?? {})) {
+    for (const [name, s] of Object.entries(proj?.mcpServers ?? {})) {
+      if (matches(name, s)) return { name, url: String(s?.url ?? ""), scope: "project", dir };
+    }
+  }
+  return null;
+}
+
+/** Host only — a bank path can name a project, and doctor output gets pasted. */
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
 
 // ── commands ────────────────────────────────────────────────────────────────
 
@@ -624,7 +685,24 @@ function cmdDoctor() {
   for (const [, a] of Object.entries(ADAPTERS)) {
     const val = env[a.envKey];
     if (!val) {
-      console.log(`  ${c.dim("○")} ${a.title} — not configured ${c.dim("(fine if unused)")}`);
+      // keel's own adapter is unset — but the backend may still be wired
+      // directly into Claude Code, in which case "not configured" is a lie by
+      // omission. See findMcpServer.
+      const ext = a.externallyWired?.();
+      if (ext?.scope === "user") {
+        const where = hostOf(ext.url);
+        console.log(`  ${c.dim("○")} ${a.title} — wired as an MCP server, outside keel${where ? ` ${c.dim(where)}` : ""}`);
+      } else if (ext) {
+        // Not counted as a problem: scoping a server to one project can be
+        // deliberate. But it is far more often `claude mcp add` run from the
+        // wrong directory, and the failure is silent everywhere else.
+        console.log(`  ${c.yellow("!")} ${a.title} — wired as an MCP server, but only for one project`);
+        console.log(`      project: ${String(ext.dir ?? "").replace(homedir(), "~")}`);
+        console.log(`      ${c.dim("invisible in every other directory; deliberate scoping is fine")}`);
+        console.log(`      fix: claude mcp remove ${ext.name} && claude mcp add --scope user ...`);
+      } else {
+        console.log(`  ${c.dim("○")} ${a.title} — not configured ${c.dim("(fine if unused)")}`);
+      }
       continue;
     }
     const bad = a.validate(val);

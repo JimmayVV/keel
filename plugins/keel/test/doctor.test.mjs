@@ -21,8 +21,15 @@ import { dirname, join } from "node:path";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KEEL = join(HERE, "..", "bin", "keel");
 
-/** A temp world: config dir with the memory adapter wired, stub CLIs on PATH. */
-function world(pluginListJson) {
+/**
+ * A temp world: config dir with the memory adapter wired, stub CLIs on PATH.
+ *
+ * `claudeJson` seeds a fake ~/.claude.json. HOME is redirected at it (see
+ * doctor()), because the MCP detection reads that file and would otherwise
+ * find the developer's own servers — which is both non-hermetic and, on the
+ * machine this was written, a test that passed for the wrong reason.
+ */
+function world(pluginListJson, claudeJson = null) {
   const root = mkdtempSync(join(tmpdir(), "keel-doc-"));
   const bin = join(root, "bin");
   const cfg = join(root, "cfg");
@@ -38,6 +45,7 @@ function world(pluginListJson) {
   );
   chmodSync(join(bin, "uvx"), 0o755);
   chmodSync(join(bin, "claude"), 0o755);
+  if (claudeJson) writeFileSync(join(root, ".claude.json"), JSON.stringify(claudeJson));
   return { root, bin, cfg };
 }
 
@@ -47,6 +55,7 @@ function doctor(w, extraEnv = {}) {
     env: {
       ...process.env,
       PATH: `${w.bin}:${process.env.PATH}`,
+      HOME: w.root,
       CLAUDE_CONFIG_DIR: w.cfg,
       ...extraEnv,
     },
@@ -242,6 +251,96 @@ describe("doctor checks which keel is running", () => {
     const r = doctor(w);
     assert.equal(r.status, 0, r.stdout);
     assert.match(r.stdout, /no plugin install record/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});
+
+/**
+ * doctor reported "Reflection (Hindsight) — not configured" on a machine where
+ * Hindsight was demonstrably working — recall and reflect had both been used
+ * minutes before. Both statements were true: keel's own adapter was cut before
+ * v0.1 and never shipped, while the instance was wired straight into Claude
+ * Code as an MCP server that keel never looked for. Reporting only on the parts
+ * keel owns, phrased as the whole picture, is how a verify command teaches you
+ * to stop believing it.
+ *
+ * Scope carries most of the value. `claude mcp add` defaults to local scope, so
+ * a server added from $HOME is connected, healthy, listed — and invisible in
+ * every repo you actually work in, with no error raised anywhere.
+ */
+describe("doctor sees a backend wired outside keel", () => {
+  const enabled = JSON.stringify([{ id: "keel-memory@keel", enabled: true }]);
+  const url = "https://hindsight.example.ts.net/mcp/personal/";
+
+  test("no MCP wiring -> still reports not configured", () => {
+    const w = world(enabled, { mcpServers: { atlassian: { url: "https://mcp.atlassian.com/v1/mcp" } } });
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /Reflection \(Hindsight\) — not configured/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("user scope -> reported as wired, and not as keel's doing", () => {
+    const w = world(enabled, { mcpServers: { hindsight: { type: "http", url } } });
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /wired as an MCP server, outside keel/);
+    assert.match(r.stdout, /hindsight\.example\.ts\.net/);
+    assert.doesNotMatch(r.stdout, /not configured/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("the host is shown but the bank path is not — doctor output gets pasted", () => {
+    const w = world(enabled, { mcpServers: { hindsight: { type: "http", url } } });
+    const r = doctor(w);
+    assert.doesNotMatch(r.stdout, /mcp\/personal/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("project scope -> flagged, with the project named and a widening fix", () => {
+    const w = world(enabled, {
+      projects: { "/home/someone": { mcpServers: { hindsight: { type: "http", url } } } },
+    });
+    const r = doctor(w);
+    assert.match(r.stdout, /only for one project/);
+    assert.match(r.stdout, /\/home\/someone/);
+    assert.match(r.stdout, /--scope user/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("project scope is not a failure — narrow scoping can be deliberate", () => {
+    const w = world(enabled, {
+      projects: { "/home/someone": { mcpServers: { hindsight: { type: "http", url } } } },
+    });
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a user-scope entry wins over a project-scope one", () => {
+    const w = world(enabled, {
+      mcpServers: { hindsight: { type: "http", url } },
+      projects: { "/home/someone": { mcpServers: { hindsight: { type: "http", url } } } },
+    });
+    const r = doctor(w);
+    assert.match(r.stdout, /outside keel/);
+    assert.doesNotMatch(r.stdout, /only for one project/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("matched on the URL too, not just a server named 'hindsight'", () => {
+    const w = world(enabled, { mcpServers: { brain: { type: "http", url } } });
+    const r = doctor(w);
+    assert.match(r.stdout, /wired as an MCP server/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("an unreadable ~/.claude.json is not a failure", () => {
+    const w = world(enabled);
+    writeFileSync(join(w.root, ".claude.json"), "{ not json");
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /not configured/);
     rmSync(w.root, { recursive: true, force: true });
   });
 });
