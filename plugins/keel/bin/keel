@@ -18,9 +18,10 @@
  *   keel settings   recommended posture, each rule explained and linked
  *   keel doctor     verify prerequisites and configuration; exit 1 on problems
  *   keel update     pull the latest keel and any installed bridge plugins
+ *   keel link       put keel on your PATH, via a shim that can't go stale
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync, lstatSync, chmodSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -551,6 +552,75 @@ function cmdDoctor() {
     }
   }
 
+  /**
+   * Which keel is actually running, and what the PATH entry resolves to.
+   *
+   * doctor reported "all good" on a machine whose CLI was fourteen commits
+   * behind. It checked the activity log, the adapters and the plugin roster —
+   * everything except itself. The PATH symlink pointed into the plugin cache at
+   * a version directory the update had left behind, so it resolved cleanly and
+   * ran old code, and the one command whose entire job is to be noisy had
+   * nothing to say about it.
+   *
+   * Reported here rather than repaired: `keel update` migrates the entry, and a
+   * verify command that quietly rewrites things is a verify command you stop
+   * being able to trust. Running from outside the plugin cache is a dev checkout
+   * or somebody's own copy — not stale, just not ours to have an opinion about.
+   */
+  {
+    const installed = installedBinary();
+    const running = process.argv[1] ? resolve(process.argv[1]) : null;
+    const link = join(homedir(), ".local", "bin", "keel");
+    let stale = 0;
+
+    if (!installed) {
+      console.log(`  ${c.dim("○")} no plugin install record — can't tell which copy is current`);
+    } else {
+      const want = resolve(installed);
+
+      const fromCache = Boolean(running?.startsWith(PLUGIN_CACHE));
+      if (fromCache && running !== want) {
+        console.log(`  ${c.red("✖")} you are running a stale copy of keel`);
+        console.log(`      running:   ${running.replace(homedir(), "~")}`);
+        console.log(`      installed: ${want.replace(homedir(), "~")}`);
+        console.log(`      fix: keel update ${c.dim("(migrates the PATH entry so this cannot recur)")}`);
+        stale++;
+      }
+
+      let st = null;
+      try {
+        st = lstatSync(link);
+      } catch { /* not opted in */ }
+
+      if (st?.isSymbolicLink()) {
+        const target = resolve(dirname(link), readlinkSync(link));
+        if (!existsSync(target)) {
+          console.log(`  ${c.red("✖")} ${link.replace(homedir(), "~")} is dangling ${c.dim(`-> ${target}`)}`);
+          console.log(`      fix: keel link`);
+          stale++;
+        } else if (target.startsWith(PLUGIN_CACHE) && target !== want) {
+          console.log(`  ${c.red("✖")} ${link.replace(homedir(), "~")} points at a stale copy ${c.dim("— it resolves, which is why nothing else noticed")}`);
+          console.log(`      points at: ${target.replace(homedir(), "~")}`);
+          console.log(`      installed: ${want.replace(homedir(), "~")}`);
+          console.log(`      fix: keel update ${c.dim("(replaces the versioned link with a shim)")}`);
+          stale++;
+        }
+      }
+
+      if (stale) {
+        // already reported
+      } else if (fromCache) {
+        const sha = installedSha("keel");
+        console.log(`  ${c.green("✔")} running the installed keel${sha ? ` ${c.dim(sha.slice(0, 7))}` : ""}`);
+      } else {
+        // A checkout, or somebody's own copy. Not stale — just not something
+        // keel has any business calling wrong.
+        console.log(`  ${c.dim("○")} running from outside the plugin cache ${c.dim(running ? running.replace(homedir(), "~") : "")}`);
+      }
+      problems += stale;
+    }
+  }
+
   for (const [, a] of Object.entries(ADAPTERS)) {
     const val = env[a.envKey];
     if (!val) {
@@ -687,40 +757,36 @@ function cmdUpdate() {
   }
 
   /**
-   * Repoint the PATH symlink whenever it isn't the installed copy.
+   * Migrate the PATH entry off the versioned symlink, once.
    *
-   * The previous version only repaired a DANGLING link, on the theory that a
-   * version bump removes the old cache directory. It doesn't — an update leaves
-   * both …/keel/0.1.0/ and …/keel/0.2.0/ in place. So the link kept resolving,
-   * kept running the old binary, and the repair never fired. `claude plugin
-   * update` would report success, the plugin really would update, and `keel` on
-   * your PATH stayed weeks behind with nothing to indicate it.
+   * The old scheme pointed ~/.local/bin/keel at …/keel/<version>/bin/keel and
+   * repaired it here on mismatch. That repair worked, but it could only ever run
+   * if the link was already correct enough to reach this code — and the whole
+   * failure mode is the link being wrong. A machine stayed two weeks behind with
+   * every check on it reporting success, precisely because the fix was sitting
+   * in a binary the stale link never invoked.
    *
-   * Resolving rather than dangling is therefore not evidence of health. Compare
-   * against the installed path from installed_plugins.json — Claude Code's own
-   * record of what it installed — and repair on mismatch. Still only ever
-   * touches a symlink that points into the plugin cache; anything else is
-   * somebody's own binary and none of keel's business.
+   * So stop repairing and remove the failure instead: a shim that resolves
+   * installPath at run time can't go stale, and doesn't need updating to keep
+   * not going stale. installShim only ever replaces the old cache symlink or a
+   * shim keel wrote itself.
+   *
+   * Only touches an entry that already exists — putting keel on your PATH stays
+   * opt-in, and an update is not the moment to opt you in.
    */
   const link = join(homedir(), ".local", "bin", "keel");
+  let present = false;
   try {
-    const target = readlinkSync(link);
-    if (target.includes(join("plugins", "cache", "keel"))) {
-      const db = readJson(join(CONFIG_DIR, "plugins", "installed_plugins.json"));
-      const installPath = db.plugins?.["keel@keel"]?.[0]?.installPath;
-      const fresh = installPath ? join(installPath, "bin", "keel") : null;
+    lstatSync(link);
+    present = true;
+  } catch { /* nothing opted in, nothing to migrate */ }
 
-      if (fresh && existsSync(fresh) && resolve(target) !== resolve(fresh)) {
-        unlinkSync(link);
-        symlinkSync(fresh, link);
-        console.log(`  ${c.green("✔")} PATH link repointed ${c.dim(`-> ${fresh}`)}`);
-        console.log(`      ${c.dim(`was ${target}`)}`);
-      } else if (!existsSync(target) && !fresh) {
-        console.log(`  ${c.yellow("!")} ${link} is dangling and no installed copy was found — re-run install.sh`);
-        problems++;
-      }
+  if (present) {
+    const result = installShim(link);
+    if (result === "created" || result === "replaced") {
+      console.log(`  ${c.green("✔")} PATH entry now resolves the installed copy at run time ${c.dim(link.replace(homedir(), "~"))}`);
     }
-  } catch { /* no symlink — nothing opted in, nothing to repair */ }
+  }
 
   console.log(problems
     ? `\n${c.red(`${problems} problem(s)`)} — install.sh remains the full-ceremony fallback\n`
@@ -748,6 +814,148 @@ function marketplaceSha() {
   if (!existsSync(join(dir, ".git"))) return null;
   const r = spawnSync("git", ["-C", dir, "rev-parse", "HEAD"], { encoding: "utf-8", timeout: 15000 });
   return r.status === 0 ? r.stdout.trim() : null;
+}
+
+// ── the PATH entry ──────────────────────────────────────────────────────────
+
+const PLUGIN_CACHE = join(CONFIG_DIR, "plugins", "cache", "keel");
+const SHIM_MARKER = "keel-path-shim v1";
+
+/**
+ * The binary Claude Code says it installed. Null when the record is missing or
+ * unreadable, which callers must treat as "can't tell" rather than "stale".
+ */
+function installedBinary() {
+  const db = readJson(join(CONFIG_DIR, "plugins", "installed_plugins.json"));
+  const p = db.plugins?.["keel@keel"]?.[0]?.installPath;
+  return p ? join(p, "bin", "keel") : null;
+}
+
+/**
+ * The shim that goes on your PATH, and why it is not a symlink.
+ *
+ * A symlink has to name a version — …/plugins/cache/keel/keel/<version>/bin/keel
+ * — and an update leaves the old version directory in place. So the link goes on
+ * resolving perfectly well, to code that is weeks old, with no symptom at all.
+ * That is not a bug in the link; it is a link being asked to record something
+ * that changes underneath it.
+ *
+ * The shim resolves installPath on every run instead. There is no versioned path
+ * left to go stale, and — this is the part that matters — the fix stops needing
+ * to live inside a binary you can only reach if the PATH entry is already
+ * correct. That circularity is how a machine stayed two weeks behind while every
+ * check on it reported success.
+ */
+function shimText() {
+  return `#!/bin/sh
+# ${SHIM_MARKER} — resolves the installed keel at run time.
+#
+# Deliberately not a symlink: a symlink names a version, an update leaves the old
+# version directory in place, and the link then resolves cleanly to stale code.
+# installed_plugins.json is Claude Code's own record of what it installed, so
+# reading it on every run means there is no versioned path left to go stale.
+#
+# keel wrote this file and will keep it current. Replace it with your own and
+# keel leaves it alone from then on.
+
+CFG="\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}"
+DB="\$CFG/plugins/installed_plugins.json"
+
+if [ ! -r "\$DB" ]; then
+  echo "keel: no plugin install record at \$DB" >&2
+  echo "  fix: claude plugin install keel@keel" >&2
+  exit 127
+fi
+
+TARGET=\$(node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s).plugins["keel@keel"][0].installPath;if(p)process.stdout.write(p+"/bin/keel")}catch(e){}})' < "\$DB" 2>/dev/null)
+
+if [ -z "\$TARGET" ] || [ ! -x "\$TARGET" ]; then
+  echo "keel: could not resolve an installed copy from \$DB" >&2
+  echo "  (node is required to read it)" >&2
+  echo "  fix: claude plugin install keel@keel" >&2
+  exit 127
+fi
+
+exec "\$TARGET" "\$@"
+`;
+}
+
+/** Did keel write this file? Never true of a binary somebody put there themselves. */
+function isKeelShim(path) {
+  try {
+    return readFileSync(path, "utf-8").includes(SHIM_MARKER);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Install or refresh the PATH shim, and never touch anything that isn't keel's.
+ *
+ * Replaceable: nothing there, a shim keel wrote, or a symlink into the plugin
+ * cache (the old scheme, which is what we are migrating away from). Anything
+ * else — a real binary, a link pointing somewhere else entirely — is somebody's
+ * own decision and gets left exactly as it is.
+ *
+ * Returns "created" | "replaced" | "current", or null when it declined.
+ */
+function installShim(link) {
+  let st = null;
+  try {
+    st = lstatSync(link);
+  } catch { /* nothing there yet */ }
+
+  if (st?.isSymbolicLink()) {
+    const target = resolve(dirname(link), readlinkSync(link));
+    if (!target.startsWith(PLUGIN_CACHE)) return null;
+  } else if (st && !isKeelShim(link)) {
+    return null;
+  }
+
+  const want = shimText();
+  if (st && !st.isSymbolicLink()) {
+    try {
+      if (readFileSync(link, "utf-8") === want) return "current";
+    } catch { /* unreadable — rewrite it */ }
+  }
+
+  mkdirSync(dirname(link), { recursive: true });
+  if (st) unlinkSync(link);
+  writeFileSync(link, want);
+  chmodSync(link, 0o755);
+  return st ? "replaced" : "created";
+}
+
+/**
+ * `keel link` — put keel on your PATH, or bring an existing entry up to date.
+ * Opt-in by design: Claude's Bash tool finds the plugin binary on its own, so
+ * this exists for people who'd rather type `keel` themselves.
+ */
+function cmdLink(args) {
+  const i = args.indexOf("--dir");
+  const dir = i >= 0 && args[i + 1] ? args[i + 1] : join(homedir(), ".local", "bin");
+  const link = join(dir, "keel");
+  const pretty = link.replace(homedir(), "~");
+
+  const result = installShim(link);
+  if (result === null) {
+    console.log(`  ${c.yellow("!")} ${pretty} exists and isn't keel's — leaving it alone`);
+    return 1;
+  }
+  console.log(
+    result === "current"
+      ? `  ${c.green("✔")} ${pretty} is current`
+      : `  ${c.green("✔")} ${pretty} ${result} ${c.dim("— resolves the installed copy at run time")}`,
+  );
+
+  if (!installedBinary()) {
+    console.log(`      ${c.yellow("!")} no plugin install record yet — the shim will resolve once keel is installed`);
+  }
+  const path = (process.env.PATH ?? "").split(":");
+  if (!path.includes(dir)) {
+    console.log(`      ${c.dim(`${dir} isn't on your PATH — add it: export PATH="${dir}:$PATH"`)}`);
+  }
+  return 0;
 }
 
 /**
@@ -914,6 +1122,8 @@ switch (cmd) {
   case "update":
     cmdUpdate();
     break;
+  case "link":
+    process.exit(cmdLink(process.argv.slice(3)));
   default:
     console.log(`
 ${c.bold("keel")} — configures third-party memory backends for Claude Code
@@ -924,6 +1134,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel settings  recommended posture, with reasons  ${c.dim("--list to read without applying")}
   keel doctor    verify; exit 1 on problems
   keel update    pull the latest keel + bridge plugins
+  keel link      put keel on your PATH  ${c.dim("--dir DIR (default ~/.local/bin)")}
 
 keel owns no runtime. It configures other people's tools and gets out of the way.
 `);

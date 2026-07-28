@@ -13,7 +13,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync, copyFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -137,6 +137,111 @@ describe("doctor probes that the activity log is actually writable", () => {
     const r = doctor(w, { KEEL_ACTIVITY_DIR: notADir });
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stdout, /activity log is NOT writable/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});
+
+/**
+ * doctor said "all good" on a machine running a CLI fourteen commits behind.
+ * It checked the activity log, the adapters and the plugin roster — everything
+ * except itself. The PATH symlink pointed into the plugin cache at a version
+ * directory an update had left behind, so it resolved cleanly and ran old code,
+ * and resolving is what every other check mistook for health.
+ */
+describe("doctor checks which keel is running", () => {
+  function installedWorld({ installVersion = "0.2.0" } = {}) {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const home = join(w.root, "home");
+    mkdirSync(home);
+    const cache = join(w.cfg, "plugins", "cache", "keel", "keel");
+    const copies = {};
+    for (const v of ["0.1.0", "0.2.0"]) {
+      mkdirSync(join(cache, v, "bin"), { recursive: true });
+      copies[v] = join(cache, v, "bin", "keel");
+      copyFileSync(KEEL, copies[v]);
+      chmodSync(copies[v], 0o755);
+    }
+    writeFileSync(
+      join(w.cfg, "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        plugins: { "keel@keel": [{ installPath: join(cache, installVersion), gitCommitSha: "abc1234deadbeef" }] },
+      }),
+    );
+    return { ...w, home, cache, copies };
+  }
+
+  const runFrom = (w, script) =>
+    spawnSync(process.execPath, [script, "doctor"], {
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: w.cfg, HOME: w.home },
+    });
+
+  test("running the installed copy -> green, with the commit", () => {
+    const w = installedWorld();
+    const r = runFrom(w, w.copies["0.2.0"]);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /running the installed keel/);
+    assert.match(r.stdout, /abc1234/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("running a version the install record doesn't name -> problem, not 'all good'", () => {
+    const w = installedWorld({ installVersion: "0.2.0" });
+    const r = runFrom(w, w.copies["0.1.0"]);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /running a stale copy/);
+    assert.doesNotMatch(r.stdout, /all good/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a stale PATH symlink is a problem even when the running copy is right", () => {
+    const w = installedWorld({ installVersion: "0.2.0" });
+    const link = join(w.home, ".local", "bin", "keel");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(w.copies["0.1.0"], link);
+    const r = runFrom(w, w.copies["0.2.0"]);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /points at a stale copy/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a dangling PATH symlink is a problem", () => {
+    const w = installedWorld();
+    const link = join(w.home, ".local", "bin", "keel");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(join(w.cache, "0.9.9", "bin", "keel"), link);
+    const r = runFrom(w, w.copies["0.2.0"]);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /dangling/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a shim on PATH is never stale — that is the point of it", () => {
+    const w = installedWorld();
+    const link = join(w.home, ".local", "bin", "keel");
+    mkdirSync(dirname(link), { recursive: true });
+    writeFileSync(link, "#!/bin/sh\n# keel-path-shim v1\n");
+    chmodSync(link, 0o755);
+    const r = runFrom(w, w.copies["0.2.0"]);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /all good/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a checkout outside the plugin cache is not called stale", () => {
+    const w = installedWorld();
+    const r = runFrom(w, KEEL);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /outside the plugin cache/);
+    assert.doesNotMatch(r.stdout, /stale/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("no install record -> can't tell, which is not a problem", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /no plugin install record/);
     rmSync(w.root, { recursive: true, force: true });
   });
 });

@@ -182,11 +182,21 @@ keel setup     names this machine and wires the adapters — portable keys
 keel update    pull the latest keel + any installed bridge plugins
                (the update slice of install.sh; the script stays the
                 full-ceremony path for backup, reset, and first install)
+keel link      put keel on your PATH (--dir, default ~/.local/bin)
 ```
 
-If you'd rather type it yourself, the installer can symlink it into `~/.local/bin`
-for you (step 5, opt-in) — or add the plugin's `bin/` to your PATH by hand. You
-don't need to.
+If you'd rather type it yourself, `keel link` puts it in `~/.local/bin` — the
+installer offers the same thing at step 5. You don't need it; Claude's Bash tool
+finds the plugin binary on its own.
+
+What it writes there is a shim, not a symlink, and that distinction is load-bearing.
+A symlink has to name a version (`…/cache/keel/keel/<version>/bin/keel`), and an
+update leaves the old version directory in place — so the link goes on resolving
+perfectly well, to code that is weeks old, with no symptom. The shim reads
+`installPath` from `installed_plugins.json` on every run instead, so there is no
+versioned path left to go stale. `keel doctor` reports it if one ever does; `keel
+update` migrates an old symlink the first time it sees one, and never touches a
+file keel didn't write.
 
 `keel` owns no runtime. It configures other people's tools and gets out of the way — which
 means every write is idempotent and surgical. It touches only the `KEEL_*` keys it owns in

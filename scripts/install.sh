@@ -281,23 +281,18 @@ if [ -n "$KEELBIN" ] && [ "$DRY" = 0 ]; then
   # keel deliberately isn't on your shell's PATH by default — Claude's Bash tool
   # finds it on its own. Linking it into ~/.local/bin is opt-in, for people who'd
   # rather type `keel` themselves.
+  #
+  # `keel link` writes a shim rather than a symlink, and owns the whole decision
+  # — including refusing to touch a file it didn't write. A symlink here would
+  # name a version, and an update leaves the old version directory in place, so
+  # the link would go on resolving to stale code with nothing to indicate it.
+  # One implementation of that rule, in the CLI, not two that can drift.
   printf '\n'
   LOCALBIN="$HOME/.local/bin"
-  KEELBIN_ABS="$(cd "$(dirname "$KEELBIN")" && pwd)/$(basename "$KEELBIN")"
-  if [ -L "$LOCALBIN/keel" ] && [ "$(readlink -f "$LOCALBIN/keel")" = "$KEELBIN_ABS" ]; then
-    dim "keel already linked: $LOCALBIN/keel"
+  if grep -q "keel-path-shim" "$LOCALBIN/keel" 2>/dev/null; then
+    dim "keel already on your PATH: $LOCALBIN/keel"
   elif ask "Add 'keel' to your PATH ($LOCALBIN)?" n; then
-    run mkdir -p "$LOCALBIN"
-    if [ -e "$LOCALBIN/keel" ] && [ ! -L "$LOCALBIN/keel" ]; then
-      warn "$LOCALBIN/keel exists and isn't a symlink — leaving it alone"
-    else
-      run ln -sf "$KEELBIN_ABS" "$LOCALBIN/keel"
-      ok "linked $LOCALBIN/keel -> $KEELBIN_ABS"
-      case ":$PATH:" in
-        *":$LOCALBIN:"*) : ;;
-        *) warn "$LOCALBIN isn't on your PATH yet — add it: export PATH=\"$LOCALBIN:\$PATH\"" ;;
-      esac
-    fi
+    node "$KEELBIN" link --dir "$LOCALBIN"
   fi
 else
   dim "run 'keel status' in a new session to see what is active"
@@ -314,7 +309,7 @@ fi
 
 # ── done ────────────────────────────────────────────────────────────────────
 b $'\nDone'
-if [ -L "$HOME/.local/bin/keel" ]; then
+if [ -e "$HOME/.local/bin/keel" ]; then
   dim "Verify:      keel status && keel doctor"
   dim "Prove it:    start a session, ask something, exit, then: keel log"
 else
