@@ -46,6 +46,38 @@ currently switched off.
 Invert this and you get a system that stops remembering when your homelab
 reboots. That is not a memory system, it is a dependency.
 
+### Where the deployed system stands against that rule (2026-07-28)
+
+Honestly: half-inverted, on purpose, and it is worth stating rather than
+quietly leaving the rule above to rot.
+
+The Hindsight instance on the TrueNAS box serves recall over the tailnet. That
+is a network call in the path of a prompt, which is exactly what the rule says
+not to do. It was accepted deliberately on 2026-07-27: when the homelab is
+unreachable, a session is **dumber, not broken**, and the features that existed
+only to paper over that seam — a local markdown floor, hybrid recall,
+export-to-markdown as a requirement, two-speed retain — were deleted rather
+than maintained.
+
+What keeps this from being the failure the rule warns about is the layer under
+it. Ambient recall still works with the homelab switched off: Claude Code loads
+the per-project memory directory natively, `MEMORY.md` is still a flat index of
+local files, and nothing in that path touches the network. So the floor the
+rule is protecting is still there — it is Claude Code's own, not keel's, which
+is why keel could stop shipping one.
+
+Hindsight sits **above** that floor, and measurement on 2026-07-28 says that is
+the right place for it. Extraction over raw transcripts produced narration and
+decisions the conversation had already reversed; extraction over a curated
+end-state summary was close to a passthrough. The engine is not what does the
+remembering. It provides retrieval — embeddings, reranking, entity graph,
+temporal queries — over facts that were already written down locally.
+
+So the rule stands as written for the substrate, and the deployed system adds a
+networked index on top of it. If that index is ever allowed to become the only
+copy of a fact, the rule has been broken for real and this section is the thing
+that should stop it.
+
 ---
 
 ## Recall

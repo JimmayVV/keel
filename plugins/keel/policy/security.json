@@ -94,6 +94,22 @@
       {
         "pattern": "\\bnpx\\s+(?:-y\\s+)?skills\\s+add\\b",
         "reason": "Installing a third-party Claude skill \u2014 review the source before allowing"
+      },
+      {
+        "pattern": "\\bdocker(?:\\s+-[^\\s]+)*\\s+compose\\b[^\\n]*\\bconfig\\b(?![^\\n]*--quiet)",
+        "reason": "Renders resolved compose config, interpolating every secret from .env into the output"
+      },
+      {
+        "pattern": "\\b(?:printenv|env)\\s*(?:\\||>|$)",
+        "reason": "Dumps the whole environment, including any secrets in it"
+      },
+      {
+        "pattern": "\\bgit\\s+config\\s+(?:--\\w+\\s+)*--list\\b",
+        "reason": "Prints git config, which commonly carries tokens in remote URLs"
+      },
+      {
+        "pattern": "\\bkubectl\\s+get\\s+secrets?\\b[^\\n]*-o\\s*(?:yaml|json)",
+        "reason": "Prints secret values in full"
       }
     ],
     "alert": [

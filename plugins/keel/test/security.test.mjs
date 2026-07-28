@@ -78,6 +78,48 @@ describe("confirm: exfiltration and remote execution", () => {
   }
 });
 
+/**
+ * The exfiltration patterns above all key on a secret FILE named next to a
+ * network sink. That misses the case that actually leaked one: a command that
+ * renders a secret it was never asked for, into the transcript.
+ *
+ * `docker compose config` interpolates .env and prints every value. No path is
+ * named, no curl is involved, and the transcript is a real sink — it goes to the
+ * model provider, sits in context, and gets summarized forward. Native deny
+ * rules cannot catch it either, because the command arrived wrapped in `ssh
+ * host '…'` and glob rules do not see inside the payload. These regexes do.
+ *
+ * This class is unbounded — every config-printing program cannot be enumerated.
+ * A short list of known footguns catches the common cases and does not pretend
+ * to more.
+ */
+describe("confirm: commands that render secrets into the transcript", () => {
+  const cases = [
+    ["compose config", "docker compose config"],
+    ["compose config under sudo", "sudo docker compose config"],
+    ["compose config inside an ssh payload", "ssh host 'cd /srv/app && docker compose config'"],
+    ["compose config with a project flag", "docker compose --project-name app config"],
+    ["bare env dump", "env"],
+    ["env piped onward", "env | grep -i key"],
+    ["printenv dump", "printenv"],
+    ["git config listing", "git config --global --list"],
+    ["kubernetes secret in full", "kubectl get secret db -o yaml"],
+  ];
+  for (const [name, cmd] of cases) {
+    test(name, () => assert.ok(isAsk(bash(cmd)), `should ask: ${cmd}`));
+  }
+
+  // The validating form is the one keel itself should keep using.
+  test("compose config --quiet is not a leak, and is not flagged", () => {
+    assert.ok(isAllow(bash("docker compose config --quiet")), "validation must stay frictionless");
+  });
+
+  test("env as an interpreter or a prefix is left alone", () => {
+    assert.ok(isAllow(bash("/usr/bin/env python3 script.py")), "shebang-style env is not a dump");
+    assert.ok(isAllow(bash("env FOO=bar ./run.sh")), "env as a prefix is not a dump");
+  });
+});
+
 describe("alert: logged, not blocked", () => {
   test("sudo is allowed but recorded", () => {
     const r = bash("sudo apt-get install -y ripgrep");
