@@ -10,7 +10,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -67,6 +67,10 @@ function world({ registry = OLD_REGISTRY, settings = OLD_SETTINGS, installed = O
   if (live.registry) put(join(cfg, "plugins", "known_marketplaces.json"), live.registry);
   if (live.installed) put(join(cfg, "plugins", "installed_plugins.json"), live.installed);
   if (live.settings) put(join(cfg, "settings.json"), live.settings);
+  if (live.claudeJson !== undefined) {
+    put(join(cfg, ".claude.json"), live.claudeJson);
+    chmodSync(join(cfg, ".claude.json"), 0o600);
+  }
 
   return { root, bin, cfg, home, state, src, log };
 }
@@ -266,3 +270,128 @@ describe("keel migrate", () => {
     assert.ok(calls(w).includes("plugin marketplace add anthropics/claude-plugins-official"));
   });
 });
+
+/**
+ * The flag repair. Distinct from everything above: it puts back nothing the old
+ * config had, it undoes a state no vanilla install can be in — the official
+ * marketplace absent while Claude Code's own guard is convinced it is present.
+ */
+describe("keel migrate — the suppressed official marketplace", () => {
+  // An old config that never mentioned the official marketplace, so restoring
+  // from it cannot put one back and the flag is the only route.
+  const NO_OFFICIAL = { "some-private": { source: { source: "git", url: "https://git.example.com/x/mp.git" } } };
+  const SUPPRESSED = {
+    officialMarketplaceAutoInstallAttempted: true,
+    officialMarketplaceAutoInstalled: true,
+    numStartups: 362,
+    oauthAccount: { emailAddress: "x@y.z" },
+  };
+
+  test("is offered when the marketplace is gone and the flag says otherwise", () => {
+    const w = world({ registry: NO_OFFICIAL, settings: { enabledPlugins: {} }, installed: null, live: { claudeJson: SUPPRESSED } });
+    const { out } = migrate(w, ["--none"]);
+    assert.match(out, /repair\s+claude-plugins-official is missing/);
+  });
+
+  test("--all clears the flags and leaves the rest of the file alone", () => {
+    const w = world({ registry: NO_OFFICIAL, settings: { enabledPlugins: {} }, installed: null, live: { claudeJson: SUPPRESSED } });
+    const { out, status } = migrate(w, ["--all"]);
+    assert.equal(status, 0);
+    const after = JSON.parse(readFileSync(join(w.cfg, ".claude.json"), "utf-8"));
+    assert.equal("officialMarketplaceAutoInstalled" in after, false);
+    assert.equal("officialMarketplaceAutoInstallAttempted" in after, false);
+    assert.equal(after.numStartups, 362);
+    assert.deepEqual(after.oauthAccount, { emailAddress: "x@y.z" });
+    assert.match(out, /cleared officialMarketplaceAutoInstall/);
+    // Written by temp-and-rename, with the mode carried over.
+    assert.equal(existsSync(join(w.cfg, ".claude.json.keel-tmp")), false);
+    assert.equal(statSync(join(w.cfg, ".claude.json")).mode & 0o777, 0o600);
+  });
+
+  test("is NOT offered when the run is already going to re-add the marketplace", () => {
+    // Otherwise it is the same question twice, and a "no" to the marketplace
+    // followed by a "yes" here would resurrect what was just declined.
+    const w = world({ live: { claudeJson: SUPPRESSED } });
+    const { out } = migrate(w, ["--none"]);
+    assert.doesNotMatch(out, /repair/);
+  });
+
+  test("is not offered when the marketplace is actually present", () => {
+    const w = world({
+      registry: NO_OFFICIAL,
+      settings: { enabledPlugins: {} },
+      installed: null,
+      live: { registry: { "claude-plugins-official": { source: { source: "github", repo: "anthropics/claude-plugins-official" } } }, claudeJson: SUPPRESSED },
+    });
+    const { out } = migrate(w, ["--none"]);
+    assert.doesNotMatch(out, /repair/);
+  });
+
+  test("a failed attempt is left alone — it retries on its own", () => {
+    const w = world({
+      registry: NO_OFFICIAL,
+      settings: { enabledPlugins: {} },
+      installed: null,
+      live: { claudeJson: { officialMarketplaceAutoInstallAttempted: true, officialMarketplaceAutoInstalled: false, officialMarketplaceAutoInstallFailReason: "git_unavailable", officialMarketplaceAutoInstallRetryCount: 2 } },
+    });
+    const { out } = migrate(w, ["--all"]);
+    assert.doesNotMatch(out, /repair/);
+    const after = JSON.parse(readFileSync(join(w.cfg, ".claude.json"), "utf-8"));
+    assert.equal(after.officialMarketplaceAutoInstallRetryCount, 2);
+  });
+
+  test("policy_blocked is a decision, not damage", () => {
+    // Clearing it would only have it re-blocked on the next start.
+    const w = world({
+      registry: NO_OFFICIAL,
+      settings: { enabledPlugins: {} },
+      installed: null,
+      live: { claudeJson: { officialMarketplaceAutoInstallAttempted: true, officialMarketplaceAutoInstalled: true, officialMarketplaceAutoInstallFailReason: "policy_blocked" } },
+    });
+    const { out } = migrate(w, ["--all"]);
+    assert.doesNotMatch(out, /repair/);
+    const after = JSON.parse(readFileSync(join(w.cfg, ".claude.json"), "utf-8"));
+    assert.equal(after.officialMarketplaceAutoInstalled, true);
+  });
+
+  test("--none leaves it suppressed but prints the manual fix", () => {
+    const w = world({ registry: NO_OFFICIAL, settings: { enabledPlugins: {} }, installed: null, live: { claudeJson: SUPPRESSED } });
+    const { out } = migrate(w, ["--none"]);
+    const after = JSON.parse(readFileSync(join(w.cfg, ".claude.json"), "utf-8"));
+    assert.equal(after.officialMarketplaceAutoInstalled, true);
+    assert.match(out, /still suppressed — fix with:\s+claude plugin marketplace add anthropics\/claude-plugins-official/);
+  });
+
+  test("repairs a machine whose previous config is long gone", () => {
+    // The realistic already-broken machine months later: it ran the old reset,
+    // the moved-aside config has since been deleted, and nothing else can fix it.
+    const w = world({ live: { claudeJson: SUPPRESSED } });
+    const r = spawnSync(process.execPath, [KEEL, "migrate", "--all"], {
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: w.cfg, HOME: w.home, XDG_STATE_HOME: join(w.root, "empty") },
+    });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /still needs one repair/);
+    const after = JSON.parse(readFileSync(join(w.cfg, ".claude.json"), "utf-8"));
+    assert.equal("officialMarketplaceAutoInstalled" in after, false);
+  });
+
+  test("--dry-run reports the repair without writing it", () => {
+    const w = world({ registry: NO_OFFICIAL, settings: { enabledPlugins: {} }, installed: null, live: { claudeJson: SUPPRESSED } });
+    const { out } = migrate(w, ["--all", "--dry-run"]);
+    assert.match(out, /would clear officialMarketplaceAutoInstall/);
+    const after = JSON.parse(readFileSync(join(w.cfg, ".claude.json"), "utf-8"));
+    assert.equal(after.officialMarketplaceAutoInstalled, true);
+  });
+
+  test("a healthy machine with no previous config still says nothing", () => {
+    const w = world({ live: { claudeJson: { numStartups: 3 } } });
+    const r = spawnSync(process.execPath, [KEEL, "migrate", "--all"], {
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: w.cfg, HOME: w.home, XDG_STATE_HOME: join(w.root, "empty") },
+    });
+    assert.match(r.stdout, /no previous config found — nothing to migrate/);
+    assert.deepEqual(calls(w), []);
+  });
+});
+

@@ -22,7 +22,7 @@
  *   keel link       put keel on your PATH, via a shim that can't go stale
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync, lstatSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, renameSync, statSync, lstatSync, chmodSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -1271,6 +1271,63 @@ function readInventory(src) {
   return { marketplaces, plugins };
 }
 
+const OFFICIAL_MARKETPLACE = "claude-plugins-official";
+
+/**
+ * The one thing migrate repairs rather than restores.
+ *
+ * Claude Code auto-installs the official marketplace into a config that has
+ * never had it, and records that it did. The guard it consults on every start is
+ * that record, not the marketplace:
+ *
+ *   if (!attempted)  install it;
+ *   if (installed)   never again;
+ *
+ * A config that lost the marketplace while keeping the record therefore can
+ * never get one back. No vanilla install can be in that state, and nobody chose
+ * it — which is why this is offered even when there is no previous config left
+ * to migrate from, and why it is worth offering to a machine that already ran
+ * the old reset months ago.
+ *
+ * Returns null when there is nothing to repair, so the caller can treat a
+ * healthy machine and an unfixable one the same way: say nothing.
+ */
+function officialFlagRepair(have) {
+  // Present: the flag is moot, and Claude Code will re-set it on the next start.
+  if (have.marketplaces.has(OFFICIAL_MARKETPLACE)) return null;
+  // Whichever file exists is the one Claude Code is reading.
+  const file = [join(CONFIG_DIR, ".claude.json"), join(homedir(), ".claude.json")].find(existsSync);
+  if (!file) return null;
+  const d = readJsonSoft(file);
+  // Only the "already installed" branch suppresses retries forever. A failed
+  // attempt carries its own backoff and will come back on its own.
+  if (d.officialMarketplaceAutoInstalled !== true) return null;
+  // Blocked by env var or enterprise policy is a decision, not damage: clearing
+  // the flag would only have it re-blocked on the next start.
+  if (d.officialMarketplaceAutoInstallFailReason === "policy_blocked") return null;
+  const keys = Object.keys(d).filter((k) => k.startsWith("officialMarketplaceAutoInstall"));
+  return keys.length ? { file, keys } : null;
+}
+
+/** Same write discipline as install.sh: mode preserved, temp file, rename. */
+function applyFlagRepair(rep, dry) {
+  if (dry) {
+    console.log(`    ${c.dim(`would clear ${rep.keys.join(", ")} in ${rep.file}`)}`);
+    return true;
+  }
+  try {
+    const d = JSON.parse(readFileSync(rep.file, "utf-8"));
+    for (const k of rep.keys) delete d[k];
+    const mode = statSync(rep.file).mode & 0o777;
+    const tmp = `${rep.file}.keel-tmp`;
+    writeFileSync(tmp, JSON.stringify(d, null, 2), { mode });
+    renameSync(tmp, rep.file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** What this machine already has, so a re-run proposes only what is missing. */
 function currentState() {
   const settings = readJsonSoft(SETTINGS);
@@ -1308,29 +1365,41 @@ async function cmdMigrate(argv) {
 
   const candidates = flags["from"] && flags["from"] !== "true" ? [resolve(flags["from"])] : findPreviousConfigs();
   const src = candidates.find((d) => existsSync(d));
-  if (!src) {
+
+  const have = currentState();
+  const { marketplaces, plugins } = src ? readInventory(src) : { marketplaces: [], plugins: [] };
+  const missingMarkets = marketplaces.filter((m) => !have.marketplaces.has(m.name));
+  const missingPlugins = plugins.filter((p) => !have.plugins.has(p.id));
+
+  /**
+   * Only offer the flag repair when this run is not already going to put the
+   * official marketplace back. Otherwise declining it in the list and then being
+   * asked to un-suppress it are the same question twice, and answering them
+   * differently would resurrect a marketplace the user just refused.
+   */
+  const repair = missingMarkets.some((m) => m.name === OFFICIAL_MARKETPLACE) ? null : officialFlagRepair(have);
+
+  if (src) {
+    console.log(`  ${c.dim(`from ${src}`)}`);
+  } else if (repair) {
+    console.log(`  ${c.dim("no previous config found — but this machine still needs one repair")}`);
+  } else {
     console.log(`  ${c.dim("no previous config found — nothing to migrate")}`);
     console.log(`  ${c.dim(`looked in ${join(XDG_STATE, "keel")} and beside ${CONFIG_DIR}`)}`);
     console.log(`  ${c.dim("point at one explicitly with:  keel migrate --from DIR")}\n`);
     return 0;
   }
 
-  const { marketplaces, plugins } = readInventory(src);
-  const have = currentState();
-  const missingMarkets = marketplaces.filter((m) => !have.marketplaces.has(m.name));
-  const missingPlugins = plugins.filter((p) => !have.plugins.has(p.id));
-
-  console.log(`  ${c.dim(`from ${src}`)}`);
-  if (marketplaces.length === 0 && plugins.length === 0) {
-    console.log(`  ${c.dim("it had no marketplaces or plugins — nothing to migrate")}\n`);
-    return 0;
-  }
-  if (missingMarkets.length === 0 && missingPlugins.length === 0) {
-    console.log(`  ${c.green("✔")} everything it had is already installed here — nothing to do\n`);
+  if (missingMarkets.length === 0 && missingPlugins.length === 0 && !repair) {
+    const had = marketplaces.length > 0 || plugins.length > 0;
+    console.log(`  ${c.green("✔")} ${had ? "everything it had is already installed here" : "it had no marketplaces or plugins"} — nothing to do\n`);
     return 0;
   }
 
-  console.log(`  ${c.dim(`${marketplaces.length} marketplace(s), ${plugins.length} plugin(s); listing what is missing here`)}\n`);
+  if (src) {
+    console.log(`  ${c.dim(`${marketplaces.length} marketplace(s), ${plugins.length} plugin(s); listing what is missing here`)}`);
+  }
+  console.log("");
   for (const m of missingMarkets) {
     const note = m.spec ? c.dim(m.spec) : c.yellow("no usable source recorded — cannot re-add automatically");
     console.log(`  ${c.bold("marketplace")}  ${m.name}  ${note}`);
@@ -1342,6 +1411,10 @@ async function cmdMigrate(argv) {
   const orphans = missingPlugins.filter((p) => !missingMarkets.some((m) => m.name === p.market));
   for (const p of orphans) {
     console.log(`  ${c.bold("plugin")}       ${p.id}${p.enabled ? "" : c.dim("  (was disabled)")}`);
+  }
+  if (repair) {
+    console.log(`  ${c.bold("repair")}       ${OFFICIAL_MARKETPLACE} is missing, and a stale flag is suppressing`);
+    console.log(`               the reinstall Claude Code would otherwise do by itself`);
   }
   console.log("");
 
@@ -1380,8 +1453,16 @@ async function cmdMigrate(argv) {
     }
 
     if (mode === "none") {
-      console.log(`\n  ${c.dim("nothing restored — your old setup is still at")}`);
-      console.log(`  ${c.dim(src)}`);
+      console.log("");
+      if (src) {
+        console.log(`  ${c.dim("nothing restored — your old setup is still at")}`);
+        console.log(`  ${c.dim(src)}`);
+      } else {
+        console.log(`  ${c.dim("nothing changed")}`);
+      }
+      // The repair is the one item that does not come back on its own, so the
+      // manual form goes out even when the answer was no.
+      if (repair) console.log(`  ${c.dim(`official marketplace still suppressed — fix with:  claude plugin marketplace add anthropics/${OFFICIAL_MARKETPLACE}`)}`);
       console.log(`  ${c.dim("change your mind any time:  keel migrate")}\n`);
       return 0;
     }
@@ -1413,6 +1494,16 @@ async function cmdMigrate(argv) {
     };
 
     console.log("");
+    if (repair && (await yes(`clear the flag suppressing ${OFFICIAL_MARKETPLACE}?`))) {
+      if (applyFlagRepair(repair, dry)) {
+        done++;
+        console.log(`  ${c.green("✔")} cleared ${repair.keys.join(", ")} ${c.dim("— it will reinstall itself on the next start")}`);
+      } else {
+        failed++;
+        console.log(`  ${c.red("✖")} could not write ${repair.file} — add it by hand: claude plugin marketplace add anthropics/${OFFICIAL_MARKETPLACE}`);
+      }
+    }
+
     // Marketplaces first: `plugin install x@y` needs y to be known already.
     const restored = new Set();
     for (const m of missingMarkets) {

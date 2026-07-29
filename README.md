@@ -191,8 +191,12 @@ keel update    pull the latest keel + any installed bridge plugins
 keel migrate   restore marketplaces + plugins from a config a reset moved
                aside — lists what this machine is missing, then --all,
                --none, or --pick one at a time (default: none)
+               also repairs the one state no vanilla install can be in: the
+               official marketplace absent while Claude Code's own flag
+               says it is present, which suppresses the reinstall forever
                (--from DIR, --dry-run; re-runnable for as long as the old
-                config is on disk, which is indefinitely)
+                config is on disk, which is indefinitely — and the repair
+                works even when it is long gone)
 keel link      put keel on your PATH (--dir, default ~/.local/bin)
 ```
 

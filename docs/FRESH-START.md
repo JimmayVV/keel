@@ -177,23 +177,18 @@ cp -a "$HOME/keel-carryover/.claude.json"      "$HOME/" 2>/dev/null
 cp -a "$HOME/keel-carryover/projects"          "$CFG/projects" 2>/dev/null
 ```
 
-### One flag to clear, before you restart
+Two things do **not** come back with that, and both are handled in step 6 once
+keel is installed and can do it for you:
 
-The flag saying the official marketplace has already been auto-installed lives in
-`~/.claude.json`, which you just restored. Claude Code checks that flag, not
-whether the marketplace is actually present — so left set, it suppresses the
-reinstall permanently, and you get **less than vanilla**: no official
-marketplace, and no attempt to fetch one. You find out weeks later, in an
-unrelated repo, when an install fails with `Available marketplaces: keel`.
-
-```sh
-node -e 'const f=process.env.HOME+"/.claude.json",fs=require("fs"),d=JSON.parse(fs.readFileSync(f));
-Object.keys(d).filter(k=>k.startsWith("officialMarketplaceAutoInstall")).forEach(k=>delete d[k]);
-fs.writeFileSync(f,JSON.stringify(d,null,2))'
-```
-
-Your own marketplaces and plugins went with the config dir in step 4 and are
-restored in step 6, once keel is installed and can do it for you.
+- **Your marketplaces and plugins.** The registry lived inside the config dir, so
+  the move in step 4 took all of it.
+- **The official marketplace, specifically.** `~/.claude.json` — which you just
+  restored — carries a flag saying it has already been auto-installed. Claude
+  Code checks that flag, not whether the marketplace is actually there, so left
+  set it suppresses the reinstall *permanently*. That leaves you with less than
+  vanilla: no official marketplace, and no attempt to fetch one. You find out
+  weeks later, in an unrelated repo, when an install fails with
+  `Available marketplaces: keel`.
 
 Start again and confirm you're still logged in and your memory came back.
 
@@ -220,6 +215,12 @@ missing — including which plugins were *disabled*, since restoring one of thos
 switched on would quietly change how the machine behaves — then offers **all**,
 **none**, or **pick one at a time**. The default is none: you asked for vanilla,
 and this command undoing that by default would be the same surprise in reverse.
+
+It also clears the suppression flag described in step 5, but only when it would
+otherwise leave you stuck: if the official marketplace is already in the list to
+re-add, adding it settles the matter and you are not asked twice. Decline it
+there and the flag stays as it is — a marketplace you just refused should not
+reappear by the back door.
 
 Nothing about it is one-shot. The old config stays where it is, so `keel migrate`
 answers the same question a month from now, and re-running it after a partial
