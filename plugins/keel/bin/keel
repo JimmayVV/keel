@@ -18,6 +18,7 @@
  *   keel settings   recommended posture, each rule explained and linked
  *   keel doctor     verify prerequisites and configuration; exit 1 on problems
  *   keel update     pull the latest keel and any installed bridge plugins
+ *   keel migrate    restore marketplaces + plugins from a config a reset moved aside
  *   keel link       put keel on your PATH, via a shim that can't go stale
  */
 
@@ -1194,12 +1195,277 @@ async function cmdSettings(argv) {
   }
 }
 
-/** Ctrl+D at a prompt means "stop", not "crash". */
+/**
+ * Like readJson, but tolerant. readJson exits(1) on malformed input, which is
+ * right for keel's own files and wrong here: migrate reads a config that some
+ * other tool wrote and that the user may have hand-edited years ago. One bad
+ * file there should cost you that file's contents, not the whole command.
+ */
+function readJsonSoft(path) {
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    console.log(`  ${c.yellow("!")} ${path} is not valid JSON — skipping it`);
+    return {};
+  }
+}
+
+/** Every directory a reset could have left an old config in, newest first. */
+function findPreviousConfigs() {
+  const found = [];
+  const dirs = [
+    [join(XDG_STATE, "keel"), (n) => n.startsWith("previous-config-")],
+    // docs/FRESH-START.md's by-hand route parks it beside the config dir instead.
+    [dirname(CONFIG_DIR), (n) => n.startsWith(`${CONFIG_DIR.split("/").pop()}.old-`)],
+  ];
+  for (const [dir, match] of dirs) {
+    if (!existsSync(dir)) continue;
+    try {
+      for (const n of readdirSync(dir)) if (match(n)) found.push(join(dir, n));
+    } catch {
+      /* unreadable dir is not an error — it just holds no candidates */
+    }
+  }
+  // Names end in a sortable timestamp, so lexical descending is newest first.
+  return found.sort().reverse();
+}
+
+/**
+ * What a previous config had. Two sources per question, because Claude Code
+ * records each in two places and they can disagree:
+ *
+ *   marketplaces — the registry (plugins/known_marketplaces.json) is what was
+ *     actually cloned; settings.extraKnownMarketplaces is what was *declared*.
+ *     A marketplace added but never fetched exists only in the second.
+ *   plugins — installed_plugins.json is what was installed and at what scope;
+ *     settings.enabledPlugins is what was switched on. A plugin can be installed
+ *     and deliberately disabled, and restoring that as enabled would change how
+ *     the machine behaves. Both are kept so the restore can be faithful.
+ */
+function readInventory(src) {
+  const settings = readJsonSoft(join(src, "settings.json"));
+  const declared = settings.extraKnownMarketplaces ?? {};
+  const registry = readJsonSoft(join(src, "plugins", "known_marketplaces.json"));
+  const enabled = settings.enabledPlugins ?? {};
+  const installed = readJsonSoft(join(src, "plugins", "installed_plugins.json")).plugins ?? {};
+
+  const marketplaces = [];
+  for (const [name, e] of Object.entries({ ...declared, ...registry })) {
+    const s = e?.source ?? {};
+    // `claude plugin marketplace add` takes owner/repo, a URL, or a path. It does
+    // NOT take installLocation: that pointed inside the config dir the reset
+    // moved, so it names a directory that is no longer there.
+    const spec = s.repo || s.url || s.path || null;
+    marketplaces.push({ name, spec, kind: s.source ?? "unknown" });
+  }
+
+  const plugins = [];
+  const add = (id, scope) => {
+    if (plugins.some((p) => p.id === id)) return;
+    plugins.push({ id, market: id.split("@")[1] ?? null, scope, enabled: enabled[id] !== false });
+  };
+  for (const [id, recs] of Object.entries(installed)) add(id, (Array.isArray(recs) ? recs[0]?.scope : null) ?? "user");
+  for (const id of Object.keys(enabled)) add(id, "user");
+
+  return { marketplaces, plugins };
+}
+
+/** What this machine already has, so a re-run proposes only what is missing. */
+function currentState() {
+  const settings = readJsonSoft(SETTINGS);
+  return {
+    marketplaces: new Set([
+      ...Object.keys(readJsonSoft(join(CONFIG_DIR, "plugins", "known_marketplaces.json"))),
+      ...Object.keys(settings.extraKnownMarketplaces ?? {}),
+    ]),
+    plugins: new Set(Object.keys(readJsonSoft(join(CONFIG_DIR, "plugins", "installed_plugins.json")).plugins ?? {})),
+  };
+}
+
+/**
+ * keel migrate — restore marketplaces and plugins from a config a reset moved
+ * aside.
+ *
+ * This exists because the reset in install.sh moves the whole config dir, and
+ * the plugin registry lives inside it. Printing "here is what you lost" at the
+ * end of an install is not enough: the list scrolls past, and the moment you
+ * actually care is three weeks later when an install fails in another repo.
+ * The old config stays under ~/.local/state/keel indefinitely, so this stays
+ * runnable indefinitely.
+ *
+ * Restores nothing without being told to. Default is none — you asked for
+ * vanilla one step earlier, and this command silently undoing that would be a
+ * worse surprise than doing nothing.
+ */
+async function cmdMigrate(argv) {
+  const flags = parseFlags(argv);
+  const dry = Boolean(flags["dry-run"]);
+  let mode = flags["all"] ? "all" : flags["none"] ? "none" : flags["pick"] ? "pick" : null;
+  const interactive = stdin.isTTY && !flags["non-interactive"];
+
+  console.log(`\n${c.bold("keel migrate")} — restore marketplaces and plugins from a previous setup\n`);
+
+  const candidates = flags["from"] && flags["from"] !== "true" ? [resolve(flags["from"])] : findPreviousConfigs();
+  const src = candidates.find((d) => existsSync(d));
+  if (!src) {
+    console.log(`  ${c.dim("no previous config found — nothing to migrate")}`);
+    console.log(`  ${c.dim(`looked in ${join(XDG_STATE, "keel")} and beside ${CONFIG_DIR}`)}`);
+    console.log(`  ${c.dim("point at one explicitly with:  keel migrate --from DIR")}\n`);
+    return 0;
+  }
+
+  const { marketplaces, plugins } = readInventory(src);
+  const have = currentState();
+  const missingMarkets = marketplaces.filter((m) => !have.marketplaces.has(m.name));
+  const missingPlugins = plugins.filter((p) => !have.plugins.has(p.id));
+
+  console.log(`  ${c.dim(`from ${src}`)}`);
+  if (marketplaces.length === 0 && plugins.length === 0) {
+    console.log(`  ${c.dim("it had no marketplaces or plugins — nothing to migrate")}\n`);
+    return 0;
+  }
+  if (missingMarkets.length === 0 && missingPlugins.length === 0) {
+    console.log(`  ${c.green("✔")} everything it had is already installed here — nothing to do\n`);
+    return 0;
+  }
+
+  console.log(`  ${c.dim(`${marketplaces.length} marketplace(s), ${plugins.length} plugin(s); listing what is missing here`)}\n`);
+  for (const m of missingMarkets) {
+    const note = m.spec ? c.dim(m.spec) : c.yellow("no usable source recorded — cannot re-add automatically");
+    console.log(`  ${c.bold("marketplace")}  ${m.name}  ${note}`);
+    for (const p of missingPlugins.filter((p) => p.market === m.name)) {
+      console.log(`       ${c.dim("plugin")}   ${p.id}${p.enabled ? "" : c.dim("  (was disabled)")}`);
+    }
+  }
+  // Plugins whose marketplace this machine already has: restorable on their own.
+  const orphans = missingPlugins.filter((p) => !missingMarkets.some((m) => m.name === p.market));
+  for (const p of orphans) {
+    console.log(`  ${c.bold("plugin")}       ${p.id}${p.enabled ? "" : c.dim("  (was disabled)")}`);
+  }
+  console.log("");
+
+  /**
+   * One readline for the whole command, opened here and closed once at the end.
+   * Closing an interface ends the shared stdin stream, so a second one opened
+   * afterwards resolves every question instantly with no input — which in a
+   * [Y/n] loop reads as "yes" and silently restores everything the user was
+   * about to decline.
+   */
+  const rl = interactive ? createInterface({ input: stdin, output: stdout }) : null;
+  const claudeRun = (args) => {
+    if (dry) {
+      console.log(`    ${c.dim(`would run: claude ${args.join(" ")}`)}`);
+      return true;
+    }
+    const r = spawnSync("claude", args, { encoding: "utf-8", timeout: 180000 });
+    return r.status === 0;
+  };
+
+  let done = 0;
+  let failed = 0;
+  try {
+    if (!mode) {
+      if (!rl) {
+        console.log(`  ${c.dim("non-interactive — nothing restored. Re-run with one of:")}`);
+        console.log(`  ${c.dim("keel migrate --all    restore everything above")}`);
+        console.log(`  ${c.dim("keel migrate --pick   choose interactively")}\n`);
+        return 0;
+      }
+      console.log(`  ${c.bold("[a]")} all — restore everything listed`);
+      console.log(`  ${c.bold("[n]")} none — stay vanilla ${c.dim("(default)")}`);
+      console.log(`  ${c.bold("[p]")} pick — decide one at a time`);
+      const a = (await ask1(rl, `\n  Carry over? ${c.dim("[a/N/p]")} `))?.trim().toLowerCase() ?? "";
+      mode = a.startsWith("a") ? "all" : a.startsWith("p") ? "pick" : "none";
+    }
+
+    if (mode === "none") {
+      console.log(`\n  ${c.dim("nothing restored — your old setup is still at")}`);
+      console.log(`  ${c.dim(src)}`);
+      console.log(`  ${c.dim("change your mind any time:  keel migrate")}\n`);
+      return 0;
+    }
+
+    // Without a terminal there is nobody to pick, and every prompt would take
+    // its default — turning --pick into --all against the user's explicit
+    // instruction to choose. Refuse instead.
+    if (mode === "pick" && !rl) {
+      console.log(`  ${c.yellow("!")} --pick needs a terminal to ask in.`);
+      console.log(`  ${c.dim("run it interactively, or use --all to restore everything listed")}\n`);
+      return 1;
+    }
+
+    // Ctrl+D mid-pick means "I am done deciding" — stop, keep what is already
+    // restored, and ask nothing further. Treating it as the [Y/n] default would
+    // restore the rest of the list on a keystroke that meant the opposite.
+    const picking = mode === "pick" && rl;
+    let aborted = false;
+    const yes = async (q) => {
+      if (aborted) return false;
+      if (!picking) return true;
+      const a = await ask1(rl, `  ${q} ${c.dim("[Y/n]")} `);
+      if (a === null) {
+        aborted = true;
+        console.log(`  ${c.dim("stopped — nothing further restored")}`);
+        return false;
+      }
+      return !a.trim().toLowerCase().startsWith("n");
+    };
+
+    console.log("");
+    // Marketplaces first: `plugin install x@y` needs y to be known already.
+    const restored = new Set();
+    for (const m of missingMarkets) {
+      if (!m.spec) continue;
+      if (!(await yes(`marketplace ${m.name}?`))) continue;
+      if (claudeRun(["plugin", "marketplace", "add", m.spec])) {
+        restored.add(m.name);
+        done++;
+        console.log(`  ${c.green("✔")} ${m.name}`);
+      } else {
+        failed++;
+        console.log(`  ${c.red("✖")} ${m.name} — add it by hand: claude plugin marketplace add ${m.spec}`);
+      }
+    }
+    for (const p of missingPlugins) {
+      // Skip a plugin whose marketplace is neither present nor just restored:
+      // the install would fail, and a failure the user could not have avoided
+      // reads like a bug in this command.
+      if (p.market && !restored.has(p.market) && !have.marketplaces.has(p.market)) continue;
+      if (!(await yes(`plugin ${p.id}?`))) continue;
+      if (claudeRun(["plugin", "install", p.id, "--scope", p.scope])) {
+        done++;
+        // Installing enables it. Anything deliberately switched off before has
+        // to be switched off again, or the restore changes how the machine runs.
+        if (!p.enabled) claudeRun(["plugin", "disable", p.id]);
+        console.log(`  ${c.green("✔")} ${p.id}${p.enabled ? "" : c.dim(" (disabled, as before)")}`);
+      } else {
+        failed++;
+        console.log(`  ${c.red("✖")} ${p.id} — install it by hand: claude plugin install ${p.id}`);
+      }
+    }
+  } finally {
+    rl?.close();
+  }
+
+  console.log(`\n  ${done} restored${failed ? `, ${c.red(`${failed} failed`)}` : ""}`);
+  if (done > 0 && !dry) console.log(`  ${c.dim("restart Claude Code to load them")}`);
+  console.log("");
+  return failed > 0 ? 1 : 0;
+}
+
+/**
+ * Ctrl+D at a prompt means "stop", not "crash".
+ *
+ * Returns null for "the input ended", distinct from "" for a bare enter. A
+ * prompt that defaults to yes has to tell those apart: enter means yes, and
+ * Ctrl+D must not.
+ */
 async function ask1(rl, prompt) {
   try {
     return await rl.question(prompt);
   } catch {
-    return "";
+    return null;
   }
 }
 
@@ -1222,6 +1488,8 @@ switch (cmd) {
   case "update":
     cmdUpdate();
     break;
+  case "migrate":
+    process.exit(await cmdMigrate(process.argv.slice(3)));
   case "link":
     process.exit(cmdLink(process.argv.slice(3)));
   default:
@@ -1234,6 +1502,8 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel settings  recommended posture, with reasons  ${c.dim("--list to read without applying")}
   keel doctor    verify; exit 1 on problems
   keel update    pull the latest keel + bridge plugins
+  keel migrate   restore marketplaces + plugins from a config a reset moved aside
+                 ${c.dim("--all | --pick | --none, --from DIR, --dry-run")}
   keel link      put keel on your PATH  ${c.dim("--dir DIR (default ~/.local/bin)")}
 
 keel owns no runtime. It configures other people's tools and gets out of the way.

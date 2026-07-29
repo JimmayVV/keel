@@ -6,7 +6,10 @@
 #     command and waits for you to run it in another terminal. You stay the one
 #     who elevates.
 #   * It never deletes. The reset step is a `mv`, and it prints the one-line
-#     undo before doing anything.
+#     undo before doing anything. The single edit it makes outside the config dir
+#     — clearing the official-marketplace auto-install flags in ~/.claude.json,
+#     so a reset config can rebuild itself — is copied to the carryover dir
+#     first, and the undo for it is printed at the end alongside the other one.
 #   * Every step is skippable and the whole thing is re-runnable.
 #
 # Usage:
@@ -54,6 +57,10 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 KEEL_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/keel"
 BACKUP="$KEEL_STATE/backups/claude-$STAMP"
 DRY=0; DO_RESET=""; DO_BACKUP=""; MARKETPLACE="JimmayVV/keel"
+# Marketplaces the reset moved aside, as ready-to-run `add` lines. Declared here
+# because the Done section reads it whether or not the reset ran, and this script
+# runs under `set -u`.
+RESTORE=()
 
 for a in "$@"; do
   case "$a" in
@@ -198,6 +205,72 @@ else
     [ -d "$CARRY/projects" ]          && run cp -a "$CARRY/projects" "$CFG/projects"
     [ "$DRY" = 1 ] && dim "would reset, carrying over login and per-project memory" \
                    || ok "reset — login and per-project memory carried over"
+
+    # The plugin registry lives INSIDE the config dir, so the move takes every
+    # marketplace with it. The flag saying the official marketplace has already
+    # been auto-installed lives OUTSIDE it, in $HOME/.claude.json, which the move
+    # does not touch. Together those leave you with less than vanilla: no
+    # marketplaces at all, and Claude Code certain there is nothing to do about
+    # it — a plugin install in some unrelated repo then fails weeks later with
+    # "Available marketplaces: keel" and no hint of what took the others.
+    #
+    # So: clear the flag, which lets the official marketplace come back on its
+    # own exactly as it would on a new machine, and print the exact line for the
+    # rest. Third-party marketplaces are not re-added automatically — "reset to
+    # vanilla" is what was asked for, and vanilla does not include them.
+    OLDCFG="$KEEL_STATE/previous-config-$STAMP"
+    # On a dry run nothing has moved, so read the registry where it still is.
+    OLDMP="$OLDCFG/plugins/known_marketplaces.json"
+    [ "$DRY" = 1 ] && OLDMP="$CFG/plugins/known_marketplaces.json"
+    if [ -f "$OLDMP" ]; then
+      while IFS= read -r l; do [ -n "$l" ] && RESTORE+=("$l"); done < <(
+        node -e '
+          const fs = require("fs");
+          const [f, self] = process.argv.slice(1);
+          let d; try { d = JSON.parse(fs.readFileSync(f, "utf8")); } catch { process.exit(0); }
+          for (const [name, e] of Object.entries(d || {})) {
+            const s = (e && e.source) || {};
+            const arg = s.repo || s.url || s.path || (e && e.installLocation) || "";
+            if (!arg || arg === self || name === self) continue;
+            console.log(name + "\t" + arg);
+          }
+        ' "$OLDMP" "$MARKETPLACE" 2>/dev/null
+      )
+    fi
+    if [ ${#RESTORE[@]} -gt 0 ]; then
+      warn "the reset moved ${#RESTORE[@]} other plugin marketplace(s) aside:"
+      for r in "${RESTORE[@]}"; do dim "claude plugin marketplace add ${r#*$'\t'}"; done
+      # Printed raw here as well as offered interactively in step 5, because this
+      # is the copy that survives keel's own install failing two steps from now.
+      dim "Step 5 offers to restore these and their plugins for you."
+    fi
+    # Cleared after the carryover copy above, so $CARRY holds the original.
+    if [ -e "$HOME/.claude.json" ]; then
+      if [ "$DRY" = 1 ]; then
+        dim "would clear officialMarketplaceAutoInstall* in $HOME/.claude.json"
+      else
+        CLEARED=$(node -e '
+          const fs = require("fs");
+          const f = process.argv[1];
+          let raw; try { raw = fs.readFileSync(f, "utf8"); } catch { process.exit(2); }
+          let d;   try { d = JSON.parse(raw); } catch { process.exit(3); }
+          const keys = Object.keys(d).filter(k => k.startsWith("officialMarketplaceAutoInstall"));
+          if (!keys.length) process.exit(1);
+          for (const k of keys) delete d[k];
+          const mode = fs.statSync(f).mode & 0o777;
+          fs.writeFileSync(f + ".keel-tmp", JSON.stringify(d, null, 2), { mode });
+          fs.renameSync(f + ".keel-tmp", f);
+          console.log(keys.join(", "));
+        ' "$HOME/.claude.json" 2>/dev/null)
+        case $? in
+          0) ok "cleared $CLEARED — the official marketplace will reinstall itself" ;;
+          1) : ;;  # never set; a genuinely fresh machine looks like this too
+          *) warn "could not read $HOME/.claude.json — if the official marketplace is missing:"
+             dim "claude plugin marketplace add anthropics/claude-plugins-official" ;;
+        esac
+      fi
+    fi
+
     # Two things that survive a config-dir move and can quietly resurrect the old
     # setup or point tooling at a directory that no longer exists.
     HP=$(git config --global --get core.hooksPath 2>/dev/null || true)
@@ -250,10 +323,10 @@ else
   dim "would update any installed bridge plugins (keel-memory, keel-reflect)"
 fi
 
-# ── 5. configure ────────────────────────────────────────────────────────────
-b $'\n5. Configure'
-# Prefer the actually-installed cache copy over the marketplace checkout — the
-# two can diverge (e.g. a marketplace add that didn't refresh).
+# Resolved here rather than in the configure step because the carry-over step
+# below needs it too. Prefer the actually-installed cache copy over the
+# marketplace checkout — the two can diverge (e.g. a marketplace add that
+# didn't refresh).
 KEELBIN=""
 for base in "$CFG/plugins/cache" "$CFG/plugins/marketplaces"; do
   [ -d "$base" ] || continue
@@ -261,6 +334,26 @@ for base in "$CFG/plugins/cache" "$CFG/plugins/marketplaces"; do
   [ -n "$found" ] && KEELBIN="$found" && break
 done
 [ -z "$KEELBIN" ] && [ -f "$(dirname "$0")/../plugins/keel/bin/keel" ] && KEELBIN="$(cd "$(dirname "$0")/.." && pwd)/plugins/keel/bin/keel"
+
+# ── 5. carry over ───────────────────────────────────────────────────────────
+# Only meaningful after a reset: without one, the marketplaces and plugins are
+# all still here. `keel migrate` does the asking, so this step is a handoff, not
+# a second implementation — and because it is a keel subcommand rather than
+# installer-only code, the same decision can be revisited any day afterwards.
+b $'\n5. Carry over'
+if [ ! -d "$KEEL_STATE/previous-config-$STAMP" ]; then
+  dim "no reset — your marketplaces and plugins are untouched"
+elif [ -z "$KEELBIN" ]; then
+  warn "keel binary not found — restore later with: keel migrate"
+elif [ "$DRY" = 1 ]; then
+  dim "would run: keel migrate --from $KEEL_STATE/previous-config-$STAMP"
+else
+  node "$KEELBIN" migrate --from "$KEEL_STATE/previous-config-$STAMP" \
+    || warn "carry-over reported problems — re-run any time: keel migrate"
+fi
+
+# ── 6. configure ────────────────────────────────────────────────────────────
+b $'\n6. Configure'
 
 if [ -n "$KEELBIN" ] && [ "$DRY" = 0 ]; then
   node "$KEELBIN" status
@@ -298,7 +391,7 @@ else
   dim "run 'keel status' in a new session to see what is active"
 fi
 
-b $'\n6. Status line (optional)'
+b $'\n7. Status line (optional)'
 dim "ccstatusline is a maintained status line with a live-preview configurator."
 dim "It covers usage limits, reset timers, git and worktree state out of the box."
 if ask "Launch the status line configurator?" n; then
@@ -317,5 +410,12 @@ else
   dim "Prove it:    start a session, ask something, exit, then ask Claude: keel log"
 fi
 [ -d "$BACKUP" ] && dim "Backup:      $BACKUP"
-[ -d "$KEEL_STATE/previous-config-$STAMP" ] && dim "Undo reset:  rm -rf '$CFG' && mv '$KEEL_STATE/previous-config-$STAMP' '$CFG'"
+if [ -d "$KEEL_STATE/previous-config-$STAMP" ]; then
+  dim "Undo reset:  rm -rf '$CFG' && mv '$KEEL_STATE/previous-config-$STAMP' '$CFG'"
+  [ -e "$KEEL_STATE/carryover-$STAMP/.claude.json" ] && \
+    dim "             cp -a '$KEEL_STATE/carryover-$STAMP/.claude.json' '$HOME/.claude.json'"
+fi
+# The decision in step 5 is not final and should not feel final: the old config
+# stays where it is, so declining now costs nothing but a later command.
+[ -d "$KEEL_STATE/previous-config-$STAMP" ] && dim "Carry over:  keel migrate"
 printf '\n'

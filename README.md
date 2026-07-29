@@ -120,7 +120,8 @@ error, and only inspects actual `git commit` invocations, so `git log --grep` st
 ## Install
 
 One command, and it walks the whole thing — dependency check, backup, optional
-reset to vanilla, install, then the configuration TUIs:
+reset to vanilla, install, carry-over of whatever you want back from the old
+setup, then the configuration TUIs:
 
 ```sh
 git clone https://github.com/JimmayVV/keel && bash keel/scripts/install.sh
@@ -130,6 +131,11 @@ Two promises it keeps. It **never runs `sudo`**: where a system package is missi
 it prints the exact command and waits for you to run it yourself. And it **never
 deletes**: the reset step is a `mv`, and it prints the one-line undo before doing
 anything. Every step is skippable, and the script is safe to re-run.
+
+If you do reset, nothing is stranded. The old config is kept, and `keel migrate`
+reads it to put back marketplaces and plugins — all of them, none of them, or one
+at a time. It defaults to none, and stays available long after the install, so
+declining costs nothing.
 
 ```sh
 bash scripts/install.sh --dry-run    # print the plan, change nothing
@@ -182,11 +188,16 @@ keel setup     names this machine and wires the adapters — portable keys
 keel update    pull the latest keel + any installed bridge plugins
                (the update slice of install.sh; the script stays the
                 full-ceremony path for backup, reset, and first install)
+keel migrate   restore marketplaces + plugins from a config a reset moved
+               aside — lists what this machine is missing, then --all,
+               --none, or --pick one at a time (default: none)
+               (--from DIR, --dry-run; re-runnable for as long as the old
+                config is on disk, which is indefinitely)
 keel link      put keel on your PATH (--dir, default ~/.local/bin)
 ```
 
 If you'd rather type it yourself, `keel link` puts it in `~/.local/bin` — the
-installer offers the same thing at step 5. You don't need it; Claude's Bash tool
+installer offers the same thing at step 6. You don't need it; Claude's Bash tool
 finds the plugin binary on its own.
 
 What it writes there is a shim, not a symlink, and that distinction is load-bearing.
