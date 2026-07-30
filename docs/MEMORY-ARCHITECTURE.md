@@ -71,7 +71,8 @@ reboots. That is not a memory system, it is a dependency.
 Honestly: half-inverted, on purpose, and it is worth stating rather than
 quietly leaving the rule above to rot.
 
-The Hindsight instance on the TrueNAS box serves recall over the tailnet. That
+The Hindsight instance on the homelab serves recall over a private overlay
+network. That
 is a network call in the path of a prompt, which is exactly what the rule says
 not to do. It was accepted deliberately on 2026-07-27: when the homelab is
 unreachable, a session is **dumber, not broken**, and the features that existed
