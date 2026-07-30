@@ -56,7 +56,9 @@ ticket if one is in view. A no is a no for that item, not the practice.
      answerable without archaeology.
    - **Facts first** — anything where the tools contradict or sharpen the
      promise: *"Jira says this was due last week"*, *"that PR got two new
-     commits since you reviewed."*
+     commits since you reviewed."* Include the quiet one: a commitment with no
+     visible motion since it was recorded — a promise with no next move is
+     exactly what a due-date sort never surfaces.
    - **Open, in proposed order** — with one-line reasons drawn from horizons,
      stakes, and the facts above.
 
