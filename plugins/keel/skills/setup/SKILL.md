@@ -53,15 +53,27 @@ says so, which makes it safe to run any time as a check-up.
    must actually point at the memory home. If none does, offer the fix
    (`uvx basic-memory project add main <dir>`), then re-run doctor.
 
-4. **Recommended settings.** Show `keel settings --list` — every rule with
+4. **Projects** — only when a memory store is wired and no project-registry
+   note exists in it. The registry is one note listing each project — name,
+   remote, one-line purpose — so any session can find the live repo instead of
+   remembering stale facts about it. Nearly all of it is derivable, so derive
+   it: enumerate repos from `keel log --json` (the `repos` array), read each
+   checkout's `git remote get-url origin`, and present the draft. Ask the user
+   for only what machinery can't know — the one-line purpose per project, and
+   which projects belong in this store at all (work projects stay out of a
+   personal store, and the reverse). Write the note; entries are pointers, not
+   descriptions. Offer, don't insist — a user who declines keeps everything
+   else working.
+
+5. **Recommended settings.** Show `keel settings --list` — every rule with
    its reason. If the user wants them: `keel settings --yes`. It only ever
    appends; say that.
 
-5. **Migrate** — only if doctor or the conversation reveals a displaced old
+6. **Migrate** — only if doctor or the conversation reveals a displaced old
    config from a reset. Default is none: `keel migrate` stays available
    forever, so declining costs nothing. Never propose `--all` unprompted.
 
-6. **Verify and hand off.** `keel doctor` must exit 0; if it doesn't, fix or
+7. **Verify and hand off.** `keel doctor` must exit 0; if it doesn't, fix or
    plainly report what's still wrong. Note what needs a session restart
    (newly enabled plugins and MCP servers load at session start). Close by
    pointing at the `guide` skill for how everything works.
