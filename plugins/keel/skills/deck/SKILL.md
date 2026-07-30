@@ -60,7 +60,9 @@ ticket if one is in view. A no is a no for that item, not the practice.
      visible motion since it was recorded — a promise with no next move is
      exactly what a due-date sort never surfaces.
    - **Open, in proposed order** — with one-line reasons drawn from horizons,
-     stakes, and the facts above.
+     stakes, and the facts above. If a Telos note exists in this machine's
+     store, its objectives ranking informs the order — a commitment serving a
+     top objective outranks one serving none.
 
 5. **Let the user reorder in natural language.** Their answer is the decided
    order — rewrite Open in that sequence and keep their words as the reason.
