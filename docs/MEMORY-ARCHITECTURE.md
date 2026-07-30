@@ -24,6 +24,26 @@ stand on documented ground.
 
 ---
 
+## What belongs in memory at all
+
+Classify a fact by who can falsify it (the vocabulary is in [CONTEXT.md]):
+
+- A fact **a grep can falsify** is *derivable* — never store it. Its carrier is
+  looking: the project registry names the repo, the live code answers. A stored
+  copy is a cache with no invalidation.
+- A fact **only you can falsify** is *decided* — a preference, convention, or
+  choice with its why. That is what the notes store holds: pointers and reasons,
+  never copies of what grep can find.
+- A fact **a test suite can falsify** is *logic* — its carrier is a package, and
+  memory describing code is strictly dominated by code both projects import.
+
+Memory holds decided facts, machine facts, and observations. Everything else has
+a better carrier.
+
+[CONTEXT.md]: ../CONTEXT.md
+
+---
+
 ## Two operations, not one
 
 A memory system is two things ([Herrington's framing][tanstack], and it is the
@@ -163,29 +183,31 @@ into an identity.
 reinforced across ten sessions. Recurrence thresholds and a half-life are the
 mechanism; without them, every offhand remark is permanent.
 
-### It runs off-machine, through the repo
+### It runs where a log lives
 
-Retain does not need to be reachable. It needs to reach the same git repo:
+Retain does not need to be reachable. It needs to reach a log — and the activity
+log is machine-scoped by declaration ([ADR-0002]): its only reader lives on the
+machine that writes it. The work box asks "what did I do this week" of its own
+log; personal boxes share knowledge through the notes store, not through each
+other's activity records.
 
-```
-desktop  ──┐
-laptop   ──┼──►  data repo  ◄──  retain worker (homelab, cron)
- …         │      keel/activity/*.jsonl  ──► reads
-           └──    projects/*/memory/*.md ◄── writes, commits
-```
+So a retain worker is a cron job on the machine whose log it reads, writing its
+conclusions into the notes store through the adapter — the same carrier every
+other decided fact uses. An earlier design routed this through a synced data
+repo; that layer was removed (`1d19d66`, [ADR-0002]) and the transport went with
+it.
 
-The worker is **another node on the network**, not a service your machines call.
-Consequences:
+The consequences of a worker being absent are unchanged:
 
 | Failure | Effect on Claude Code |
 |---|---|
 | worker offline | none — log accrues, worker catches up |
-| worker destroyed | none on past facts; they are markdown in git on every machine |
+| worker destroyed | none on past facts; they live in the notes store |
 | you are travelling | none — you were never talking to it |
 
 Every fact it ever derived survives it. You lose future derivation, not memory.
-That is the same reasoning that keeps markdown as the source of truth
-everywhere else here.
+
+[ADR-0002]: adr/0002-one-carrier-per-datum.md
 
 ---
 
@@ -220,14 +242,18 @@ retain only.
 The point is not sync for its own sake. It is that a new machine should not need
 re-training.
 
-- Facts are files in the data repo → cloning gets you every fact.
-- `MEMORY.md` is a flat index → union merge, so two machines adding different
-  bullets is two facts, not a conflict.
-- Recall reads local files → a fresh clone recalls immediately, offline.
+- Decided facts live in the notes store → the adapter carries them to every
+  machine on the network.
+- Machine facts live in auto-memory → correctly stay behind.
 - Machine identity lives in `settings.local.json` → never conflicts.
+- Paths are convention, not configuration → `~/personal/<name>` on every
+  personal box, so a note that points at a project is true everywhere —
+  including on a machine that hasn't cloned it yet, where the registry entry
+  carries enough (name, remote, purpose) to offer the clone.
 
-`keel join` on a new box is the whole onboarding. There is no re-training step
-because there is no per-machine model state — only files.
+Onboarding a new box is `install.sh`, `keel setup`, and pointing the adapter at
+the backend. There is no re-training step because there is no per-machine model
+state.
 
 ---
 
@@ -235,10 +261,10 @@ because there is no per-machine model state — only files.
 
 **Working:**
 
-- Substrate — per-project memory synced through the data repo, union-merged
+- Substrate — auto-memory for machine facts, the notes store for decided facts
 - Ambient recall — native, no keel code involved
-- Observation layer — `keel/activity/*.jsonl`, append-only, device-scoped
-- Transport — `sync.mjs`, pull at `SessionStart`, push at `SessionEnd`
+- Observation layer — `keel/activity/*.jsonl`, append-only, device-scoped,
+  machine-local by declaration ([ADR-0002])
 - One engine bridge — `keel-memory` (Basic Memory)
 
 **Not built:**
@@ -260,7 +286,6 @@ All documented, per [DOCUMENTED-SURFACES.md](DOCUMENTED-SURFACES.md):
 | Surface | Used for |
 |---|---|
 | `UserPromptSubmit` + `hookSpecificOutput.additionalContext` | query recall |
-| `SessionStart` / `SessionEnd` | sync transport |
 | Auto memory directory | fact substrate |
 | `.mcp.json` | engine bridges |
 | `settings.json` / `settings.local.json` | config, machine-local values |

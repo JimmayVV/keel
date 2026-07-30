@@ -1,7 +1,11 @@
 # keel
 
-**A thin, durable layer under [Claude Code](https://code.claude.com).** Guardrails at the
-ingest boundary, plus a CLI that wires third-party memory backends — and nothing else.
+**A curated layer under [Claude Code](https://code.claude.com) — quick to stand up, just
+as quick to discard.** Everything it adds rides on surfaces Anthropic documents: guards
+at the ingest boundary, commit hygiene, an activity log, and wiring for a memory backend
+your machines can share. The point is leverage, not bulk — a minimal customization of the
+stock tool that lets your own work compound into a second brain across projects and
+machines, without keel ever becoming a second product you maintain.
 
 > **Status:** v0.2, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
