@@ -183,6 +183,18 @@ into an identity.
 reinforced across ten sessions. Recurrence thresholds and a half-life are the
 mechanism; without them, every offhand remark is permanent.
 
+**4. Forget by omission.** A curator rewrites the whole file to its desired next
+state; a stale fact is dropped by not being included. Full-state replacement,
+not append — appending never forgets, and a memory that never forgets is
+clutter with provenance. (The `deck` skill already works this way.)
+
+**5. A worker has tiers, not a pen.** Before any retain worker runs unattended,
+its write permissions are classified per target: *append-only* for its own
+derived-facts files, *propose-only* for anything the user wrote by hand
+(`MEMORY.md`, notes, conventions — it drafts, the user applies), and
+*untouchable* for config, hooks, and code. An autonomous writer with uniform
+write access is how a fumbled extraction becomes a rewritten identity.
+
 ### It runs where a log lives
 
 Retain does not need to be reachable. It needs to reach a log — and the activity
