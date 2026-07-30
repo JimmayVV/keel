@@ -128,18 +128,47 @@ error, and only inspects actual `git commit` invocations, so `git log --grep` st
 
 ## Install
 
-One command, and it walks the whole thing — dependency check, backup, optional
-reset to vanilla, install, carry-over of whatever you want back from the old
-setup, then the configuration TUIs:
+Two lines inside Claude Code — vanilla or years-old setup, same two lines:
+
+```
+/plugin marketplace add JimmayVV/keel
+/plugin install keel@keel
+```
+
+That is the whole install. Hooks, CLI, and skills arrive together as a normal
+plugin, and nothing about your existing configuration is touched — a plugin
+install is additive by construction, which is what makes it safe on a machine
+with history.
+
+Then, in a fresh session, let Claude walk the configuration:
+
+```
+/keel:setup
+```
+
+It inspects what's already wired, asks only about the gaps — device name,
+memory backend, recommended settings — and drives the CLI's flag form itself.
+Re-runnable any time as a check-up, non-destructive on an existing install,
+and the same conversation on a greenfield machine. Prefer doing it by hand?
+`keel setup --memory-home ~/notes && claude plugin enable keel-memory` is the
+whole of it.
+
+### The fresh-start ceremony (optional)
+
+If what you want is a *reset* — shed an accumulated config and start clean with
+keel on top — that is a bigger decision than an install, and it stays a
+deliberate, human-run script:
 
 ```sh
 git clone https://github.com/JimmayVV/keel && bash keel/scripts/install.sh
 ```
 
-Two promises it keeps. It **never runs `sudo`**: where a system package is missing
-it prints the exact command and waits for you to run it yourself. And it **never
-deletes**: the reset step is a `mv`, and it prints the one-line undo before doing
-anything. Every step is skippable, and the script is safe to re-run.
+It walks the whole thing — dependency check, backup, optional reset to vanilla,
+install, carry-over of whatever you want back from the old setup. Two promises
+it keeps. It **never runs `sudo`**: where a system package is missing it prints
+the exact command and waits for you to run it yourself. And it **never
+deletes**: the reset step is a `mv`, and it prints the one-line undo before
+doing anything. Every step is skippable, and the script is safe to re-run.
 
 If you do reset, nothing is stranded. The old config is kept, and `keel migrate`
 reads it to put back marketplaces and plugins — all of them, none of them, or one
@@ -152,34 +181,8 @@ bash scripts/install.sh --no-reset   # install alongside an existing setup
 bash scripts/install.sh --no-backup  # skip the backup step (e.g. using this as an updater)
 ```
 
-Or by hand:
-
-```sh
-/plugin marketplace add JimmayVV/keel
-/plugin install keel@keel
-```
-
-That pair is the whole install — hooks, CLI, and skills arrive together. Then,
-in a fresh session, let Claude walk the configuration:
-
-```
-/keel:setup
-```
-
-It inspects what's already wired, asks only about the gaps — device name,
-memory backend, recommended settings — and drives the CLI's flag form itself.
-Re-runnable, non-destructive on an existing install, and the same conversation
-on a greenfield machine.
-
 For the manual reset with every step explained, see
 [docs/FRESH-START.md](docs/FRESH-START.md).
-
-Then wire the notes adapter, if you want it:
-
-```sh
-keel setup --memory-home ~/notes
-claude plugin enable keel-memory
-```
 
 ### The CLI
 
