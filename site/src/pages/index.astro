@@ -1,25 +1,22 @@
 ---
 import Base from "../layouts/Base.astro";
+import Hull from "../components/Hull.astro";
 ---
 <Base>
   <header class="hero">
-    <div class="wrap">
-      <h1><span class="tick">▲</span> keel</h1>
-      <p class="lede"><strong>A keel is the beam a hull is built on</strong> — laid first,
-      under everything, keeping the vessel steady without ever being the boat. That is
-      exactly what this is to <a href="https://code.claude.com">Claude Code</a>: a thin,
-      durable layer underneath that holds your sessions steady and your setup on course.</p>
-      <div class="cta">
-        <a class="btn primary" href="/install">install in two lines</a>
-        <a class="btn ghost" href="https://github.com/JimmayVV/keel">source ↗</a>
+    <div class="wrap hero-grid">
+      <div>
+        <h1>keel</h1>
+        <p class="lede"><strong>A keel is the beam a hull is built on</strong> — laid first,
+        under everything, keeping the vessel steady without ever being the boat. That is
+        exactly what this is to <a href="https://code.claude.com">Claude Code</a>: a thin,
+        durable layer underneath that holds your sessions steady and your setup on course.</p>
+        <div class="cta">
+          <a class="btn primary" href="/install">install in two lines</a>
+          <a class="btn ghost" href="https://github.com/JimmayVV/keel">source ↗</a>
+        </div>
       </div>
-      <div class="waterline" aria-hidden="true">
-        <svg viewBox="0 0 960 150" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <line class="water" x1="0" y1="38" x2="960" y2="38" stroke-width="1" stroke-dasharray="2 7" opacity="0.7"/>
-          <path class="hull" d="M180 38 C 260 118, 700 118, 780 38" stroke-width="2"/>
-          <rect class="fin" x="474" y="100" width="12" height="42" rx="6"/>
-        </svg>
-      </div>
+      <div class="hero-art"><Hull /></div>
     </div>
   </header>
 
@@ -130,6 +127,8 @@ import Base from "../layouts/Base.astro";
       freely — that's what the licence is for. It is opinionated in the way only a tool
       with a single demanding user can be, and those opinions are written down where you
       can disagree with them.</p>
+      <p class="sub" style="margin-top:0.9rem">New to AI assistants entirely?
+      <a href="/plain">keel, in plain words →</a></p>
     </div>
   </section>
 </Base>

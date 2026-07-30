@@ -1,0 +1,56 @@
+---
+// Hero illustration — the argument of the product, drawn. A sleek hull shown
+// faint (it is not the boat), a thin fin keel with a torpedo bulb shown lit
+// (it is the point), still water. No rig: the keel is the subject.
+---
+<svg
+  class="hull-art"
+  viewBox="0 0 520 300"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+  aria-label="A racing hull drawn faintly, its fin keel and ballast bulb highlighted beneath the waterline"
+>
+  <!-- still water -->
+  <g class="water" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <line x1="6"   y1="112" x2="66"  y2="112" stroke-dasharray="1 9" />
+    <line x1="452" y1="112" x2="514" y2="112" stroke-dasharray="1 9" />
+    <line x1="26"  y1="150" x2="92"  y2="150" stroke-dasharray="1 11" opacity="0.55" />
+    <line x1="428" y1="150" x2="492" y2="150" stroke-dasharray="1 11" opacity="0.55" />
+    <line x1="54"  y1="192" x2="110" y2="192" stroke-dasharray="1 13" opacity="0.3" />
+    <line x1="404" y1="192" x2="462" y2="192" stroke-dasharray="1 13" opacity="0.3" />
+  </g>
+
+  <!-- hull: long, low, bow left — mostly above the water it barely disturbs -->
+  <g class="boat" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M34 88
+             C 130 80, 340 78, 444 90
+             C 448 98, 448 104, 444 112
+             C 356 138, 250 148, 190 144
+             C 130 140, 70 118, 34 88 Z" />
+    <!-- sheer accent -->
+    <path d="M54 92 C 150 85, 330 83, 430 93" stroke-width="1" opacity="0.5" />
+  </g>
+
+  <!-- rudder: thin blade dropping from the underbody, aft -->
+  <path class="boat" d="M392 130 C 394 156, 396 172, 402 184 C 408 172, 406 152, 402 128"
+        stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+
+  <!-- the keel: thin blade, slight aft rake, ballast bulb. The subject. -->
+  <g class="keel">
+    <path d="M232 143 L 240 236 L 254 236 L 250 145 Z" fill="var(--accent)" />
+    <path d="M204 244
+             C 204 236, 220 231, 246 231
+             C 274 231, 290 236, 290 244
+             C 290 252, 274 257, 246 257
+             C 220 257, 204 252, 204 244 Z"
+          fill="var(--accent)" />
+  </g>
+</svg>
+
+<style>
+  .hull-art { width: 100%; max-width: 28rem; height: auto; display: block; }
+  .hull-art .boat  { opacity: 0.45; }
+  .hull-art .water { opacity: 0.75; color: var(--dim); }
+  .hull-art .keel  { filter: drop-shadow(0 2px 9px color-mix(in srgb, var(--accent) 35%, transparent)); }
+</style>

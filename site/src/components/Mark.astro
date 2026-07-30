@@ -1,0 +1,16 @@
+---
+// The brandmark — the favicon's drawing, unboxed: hull line, keel fin.
+const { size = 22 } = Astro.props;
+---
+<svg
+  class="mark"
+  width={size}
+  height={size}
+  viewBox="0 0 32 32"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+  aria-hidden="true"
+>
+  <path d="M4 10 C10 19, 22 19, 28 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+  <rect x="14" y="16" width="4" height="12" rx="2" fill="var(--accent)" />
+</svg>
