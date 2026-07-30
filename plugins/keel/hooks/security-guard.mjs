@@ -50,9 +50,27 @@ function block(reason, detail) {
   process.exit(2);
 }
 
-/** Hand the decision to the human. Proven shape on current Claude Code builds. */
+/**
+ * Hand the decision to the human — the documented PreToolUse shape.
+ *
+ * An earlier version emitted a top-level `{"decision": "ask"}`, a shape that
+ * merely worked on the builds of the day. A cold review caught what that
+ * means for this tier: if the platform stops honoring an undocumented shape,
+ * every confirm rule becomes a no-op with no symptom — silent fail-open in
+ * the one component whose job is to be loud. `hookSpecificOutput.
+ * permissionDecision` is the documented contract, so it is the only shape
+ * emitted.
+ */
 function ask(message) {
-  process.stdout.write(JSON.stringify({ decision: "ask", message }));
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "ask",
+        permissionDecisionReason: message,
+      },
+    }),
+  );
   process.exit(0);
 }
 

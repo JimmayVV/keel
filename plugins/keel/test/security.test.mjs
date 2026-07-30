@@ -37,7 +37,14 @@ function run(payload, env = {}) {
 const bash = (command) => run({ tool_name: "Bash", tool_input: { command } });
 
 const BLOCKED = 2;
-const isAsk = (r) => r.code === 0 && r.json?.decision === "ask";
+// The documented PreToolUse shape — asserting the exact contract, not just
+// "some JSON came out": a guard emitting a shape the platform ignores is
+// silent fail-open, which is the regression this pins.
+const isAsk = (r) =>
+  r.code === 0 &&
+  r.json?.hookSpecificOutput?.hookEventName === "PreToolUse" &&
+  r.json?.hookSpecificOutput?.permissionDecision === "ask" &&
+  typeof r.json?.hookSpecificOutput?.permissionDecisionReason === "string";
 const isAllow = (r) => r.code === 0 && r.json?.continue === true;
 
 describe("blocked: irreversible catastrophe", () => {
