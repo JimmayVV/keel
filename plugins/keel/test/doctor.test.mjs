@@ -344,3 +344,59 @@ describe("doctor sees a backend wired outside keel", () => {
     rmSync(w.root, { recursive: true, force: true });
   });
 });
+
+/**
+ * The mapping check: doctor asks Basic Memory where notes actually land.
+ * Field incident, 2026-07-30: both of the adapter's projects pointed into a
+ * session tmpdir while doctor said "all good" — the env var's directory
+ * existed, and nothing checked that the adapter had a project there. A reboot
+ * would have taken the notes with it.
+ */
+describe("doctor checks the adapter's project mapping, not just the directory", () => {
+  const enabled = JSON.stringify([{ id: "keel-memory@keel", enabled: true }]);
+
+  function uvxSays(w, body) {
+    writeFileSync(
+      join(w.bin, "uvx"),
+      `#!/bin/sh\nif [ "$1 $2 $3" = "basic-memory project list" ]; then printf '%s' '${body.replace(/'/g, "'\\''")}'; exit 0; fi\nexit 0\n`,
+    );
+    chmodSync(join(w.bin, "uvx"), 0o755);
+  }
+
+  test("a project at the notes home (stated via ~) -> all good", () => {
+    const w = world(enabled);
+    uvxSays(w, JSON.stringify({ projects: [{ name: "main", local_path: "~/notes" }] }));
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /all good/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("projects exist but none at the notes home -> problem, with the move fix", () => {
+    const w = world(enabled);
+    uvxSays(w, JSON.stringify({ projects: [{ name: "main", local_path: "/tmp/somewhere-else" }] }));
+    const r = doctor(w);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /notes are landing at/);
+    assert.match(r.stdout, /basic-memory project move main/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("no projects at all -> problem, with the add fix", () => {
+    const w = world(enabled);
+    uvxSays(w, JSON.stringify({ projects: [] }));
+    const r = doctor(w);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /no projects at all/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a CLI that answers garbage fails open — a skipped check is not a problem", () => {
+    const w = world(enabled);
+    uvxSays(w, "not json at all");
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /all good/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});

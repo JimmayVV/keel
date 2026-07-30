@@ -204,6 +204,45 @@ const INCLUDED = [
 // `prereq`: the question "does my text leave this machine" deserves its own
 // line rather than being buried in a requirements list.
 
+/**
+ * Does Basic Memory actually write where KEEL_MEMORY_HOME points?
+ *
+ * doctor once reported ✔ on this adapter while every note landed in a session
+ * tmpdir: the env var pointed at a directory that existed, but Basic Memory's
+ * own project registry had never heard of it — a test session had left both
+ * its projects pointing into /tmp, and a reboot would have taken the notes
+ * with it. The directory existing is not the adapter using it.
+ *
+ * `project list --json` is the adapter's own documented statement of where
+ * notes go, so ask it. Anything short of a parsed answer fails open — a
+ * missing or slow CLI is a skipped check, not a problem — but a parsed answer
+ * that names no project at the notes home is exactly the silent misdirection
+ * this exists to catch.
+ */
+function basicMemoryMappingDrift(dir) {
+  const r = spawnSync("uvx", ["basic-memory", "project", "list", "--json"], {
+    encoding: "utf-8",
+    timeout: 15000,
+  });
+  if (r.status !== 0 || !r.stdout) return null;
+  let projects;
+  try {
+    projects = JSON.parse(r.stdout).projects;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(projects)) return null;
+  const expand = (p) => resolve(String(p ?? "").replace(/^~(?=$|\/)/, homedir()));
+  if (projects.length === 0)
+    return `Basic Memory has no projects at all — notes have nowhere to land\n      fix: uvx basic-memory project add main '${dir}'`;
+  if (projects.some((p) => expand(p.local_path) === expand(dir))) return null;
+  const elsewhere = projects.map((p) => String(p.local_path ?? "?")).join(", ");
+  return (
+    `no Basic Memory project maps to this directory — notes are landing at: ${elsewhere}` +
+    `\n      fix: uvx basic-memory project move ${projects[0].name} '${dir}'`
+  );
+}
+
 const ADAPTERS = {
   memory: {
     plugin: "keel-memory",
@@ -229,7 +268,7 @@ const ADAPTERS = {
     // setup, and users move directories.
     verify: (v) =>
       existsSync(v.replace(/^~/, homedir()))
-        ? null
+        ? basicMemoryMappingDrift(v)
         : `notes directory does not exist: ${v}\n      fix: mkdir -p '${v}'`,
     postSetup: (v) => {
       mkdirSync(v.replace(/^~/, homedir()), { recursive: true });
