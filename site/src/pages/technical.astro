@@ -1,0 +1,164 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="technical breakdown — keel">
+  <header class="pagehead">
+    <div class="wrap">
+      <span class="kicker">technical breakdown</span>
+      <h2>The same ideas, with their real names</h2>
+      <p class="sub">Everything the rest of this site says in plain words, expanded with
+      the terminology, the mechanisms, and the tradeoffs. The source of truth beneath
+      even this page is <a href="https://github.com/JimmayVV/keel">the repo</a>.</p>
+    </div>
+  </header>
+
+  <section id="box">
+    <div class="wrap">
+      <span class="kicker">the machinery</span>
+      <h2>What ships, precisely</h2>
+      <div class="grid cols3">
+        <div class="card">
+          <h3 id="ingest">ingest boundary</h3>
+          <p>Every <code>WebFetch</code>, <code>WebSearch</code>, and MCP result is
+          wrapped in an envelope marking it as untrusted <strong>data, never
+          instructions</strong> — closing the indirect prompt-injection path. It also
+          flags zero-width characters and bidirectional overrides. Strictly read-only:
+          it never blocks a call, never mutates a result.</p>
+        </div>
+        <div class="card">
+          <h3 id="guard">security guard</h3>
+          <p>A <code>PreToolUse</code> hook that blocks irreversible catastrophe and
+          emits the documented <code>permissionDecision: "ask"</code> before
+          exfiltration-shaped commands. Distinguishes data from code in a heredoc — a
+          Dockerfile mentioning <code>rm -rf</code> is text; the same text piped into
+          <code>bash</code> is code. Fails closed on a broken policy; your policy at
+          <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones.</p>
+        </div>
+        <div class="card">
+          <h3 id="trailers">commit hygiene</h3>
+          <p>Blocks unwanted attribution trailers in commit messages
+          (<code>KEEL_BLOCKED_TRAILERS</code>). Fails open on any internal error, and
+          only inspects actual <code>git commit</code> invocations — <code>git log
+          --grep</code> still works.</p>
+        </div>
+        <div class="card">
+          <h3 id="activity">activity log</h3>
+          <p>Append-only monthly JSONL under the config dir, written from documented
+          hook payloads (<code>UserPromptSubmit</code>, <code>Stop</code>) — never by
+          parsing transcripts. Device-scoped filenames so multiple machines can never
+          conflict. No model calls: hooks capture, skills interpret.
+          <code>KEEL_ACTIVITY_OFF=1</code> disables; <code>KEEL_ACTIVITY_DIR</code>
+          relocates.</p>
+        </div>
+        <div class="card">
+          <h3 id="memory-wiring">memory wiring</h3>
+          <p>Third-party memory engines bolt on as bridge plugins declaring MCP servers
+          via <code>.mcp.json</code> — a documented integration point. keel ships no
+          vector store, no LLM call, no daemon. <code>keel doctor</code> verifies the
+          wiring down to whether the engine's project mapping actually points at the
+          configured store.</p>
+        </div>
+        <div class="card">
+          <h3 id="cli">the cli</h3>
+          <p><code>keel status · log · doctor · setup · settings · update · migrate ·
+          link</code> — read-mostly, flags-first, idempotent writes only to
+          <code>KEEL_*</code> keys it owns, with a backup before the first write. It
+          lives on the Bash tool's PATH rather than your shell's; in practice Claude
+          runs it for you. <code>keel update</code> verifies by commit SHA rather than
+          trusting version strings.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="constitution">
+    <div class="wrap">
+      <span class="kicker">the constitution</span>
+      <h2>Three rules that can say no</h2>
+      <div style="margin-top:1.6rem">
+        <div class="rule">
+          <div class="num">01</div>
+          <div>
+            <h3>Own your config, buy your capabilities</h3>
+            <p>Sync, guardrails, and setup are configuration — personal, unshippable,
+            correctly yours, a few hundred lines. Memory, recall, and reflection are
+            capabilities — general, valuable to strangers, already built better by people
+            who do it full time. Six separate times during design, “should I build this?”
+            turned out to be “someone already did.” What survived as worth owning is
+            small and unglamorous.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="num">02</div>
+          <div>
+            <h3>Documented surfaces only</h3>
+            <p>Claude Code ships ~20 releases in a week. The only way a layer under it
+            survives is to depend exclusively on surfaces Anthropic documents and treats
+            as contract. The system keel replaced parsed session transcripts out of an
+            undocumented format — it worked, and it was one format change from silent
+            breakage. If it isn't in the docs, keel doesn't read, write, or parse it.
+            The three exceptions are repairs, listed openly with blast radius and exit
+            conditions: <em>an exception stated is a debt; an exception denied is a
+            lie.</em></p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="num">03</div>
+          <div>
+            <h3>Admission by felt need</h3>
+            <p>Prose admits freely — teardown is <code>rm</code>. A test is admitted when
+            it catches a failure class that has already occurred in this repo. Runtime —
+            hooks, subcommands, anything a session executes — requires a need felt at
+            least once, by a real user, on a real machine. “Another harness found it
+            useful” is an argument from someone else's life. Anything that fails silent
+            on removal must ship with the check that would notice.</p>
+          </div>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:1.4rem">The full text lives in the repo as
+      <a href="https://github.com/JimmayVV/keel/tree/main/docs/adr">two short ADRs</a> and a
+      <a href="https://github.com/JimmayVV/keel/blob/main/CONTEXT.md">glossary</a>.</p>
+    </div>
+  </section>
+
+  <section id="memory">
+    <div class="wrap">
+      <span class="kicker">memory</span>
+      <h2>Engines are swappable. Files are forever.</h2>
+      <p>There's an arms race in agentic memory, and Claude Code hasn't picked a winner.
+      keel's bet: <strong>own the interface and the substrate; let engines be
+      swappable.</strong> The substrate is markdown you control. The interface is Claude
+      Code's own documented hooks. An engine is a thing that turns experience into facts —
+      replaceable, and never load-bearing for remembering.</p>
+      <blockquote>Recall is local file reads. Retain is remote LLM work. Never invert it —
+      invert it and you get a system that stops remembering when your homelab reboots.
+      That's not a memory system, it's a dependency.</blockquote>
+      <p>Knowledge classifies by who can falsify it: a fact <code>grep</code> can falsify
+      is <em>derivable</em> — looked up live, never stored, so it cannot go stale. A fact
+      only you can falsify is <em>decided</em> — the notes store holds it, as a pointer
+      and a why. A fact a test suite can falsify is <em>logic</em> — it belongs in a
+      package, because memory describing code is strictly dominated by code both projects
+      import.</p>
+      <p><a href="https://github.com/JimmayVV/keel/blob/main/docs/MEMORY-ARCHITECTURE.md">The
+      full architecture →</a></p>
+    </div>
+  </section>
+
+  <section id="absences">
+    <div class="wrap">
+      <span class="kicker">deliberately not included</span>
+      <h2>The absences are load-bearing</h2>
+      <ul class="nolist">
+        <li>Parsing transcripts, history files, or any undocumented format</li>
+        <li>A memory engine, vector store, or LLM call of its own</li>
+        <li>A daemon, web UI, or background service</li>
+        <li>Credential management</li>
+        <li>A second sharing mechanism for anything an adapter already shares</li>
+      </ul>
+      <p class="sub">Every guard has an off-switch, every write has an undo. A guard that
+      can break your workflow is a guard you'll eventually disable — so the ingest
+      boundary never blocks, the log never calls a model, and the whole layer tears out
+      in one command.</p>
+    </div>
+  </section>
+</Base>

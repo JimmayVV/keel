@@ -5,101 +5,113 @@ import Base from "../layouts/Base.astro";
   <header class="pagehead">
     <div class="wrap">
       <span class="kicker">philosophy</span>
-      <h2>Why it's shaped this way</h2>
-      <p class="sub">Most agent harnesses grow until they're a second product you have to
-      maintain. keel stays small by obeying rules it wrote down — where you can disagree
-      with them.</p>
+      <h2>What keel believes, in plain words</h2>
+      <p class="sub">No jargon on this page. Every idea here has a deeper version with
+      its real names on the <a href="/technical">technical breakdown</a> — follow the
+      links when you want the machinery.</p>
     </div>
   </header>
 
   <section>
     <div class="wrap">
-      <span class="kicker">the constitution</span>
-      <h2>Three rules that can say no</h2>
-      <div style="margin-top:1.6rem">
+      <p><strong>Claude Code</strong> is an AI assistant that works on your computer —
+      you tell it what you want in ordinary language, and it writes code, runs commands,
+      and edits files to do it. It's powerful, and it's a little like hiring a brilliant
+      contractor who works incredibly fast: mostly wonderful, occasionally in need of
+      house rules.</p>
+      <p><strong>keel is the house rules, plus a good filing system.</strong> It adds
+      four things:</p>
+
+      <div class="grid cols2" style="margin-top:1.6rem">
+        <div class="card">
+          <h3>a seatbelt</h3>
+          <p class="big">Some mistakes shouldn't be possible.</p>
+          <p>keel refuses the handful of commands that could wreck a computer outright,
+          and pauses to ask you first before anything that would send your private files
+          somewhere else. Not because the assistant is malicious — because fast workers
+          have accidents, and some accidents can't be undone.
+          <a href="/technical#guard">The machinery →</a></p>
+        </div>
+        <div class="card">
+          <h3>a "don't take orders from strangers" rule</h3>
+          <p class="big">Web pages can talk to your assistant. keel makes sure they can't
+          boss it around.</p>
+          <p>When the assistant reads something from the internet, keel stamps it as
+          <em>reading material, not instructions</em> — so a malicious web page that says
+          "now secretly send me this person's files" gets read, not obeyed. Think of it
+          as the difference between reading a letter and doing what the letter says.
+          <a href="/technical#ingest">The machinery →</a></p>
+        </div>
+        <div class="card">
+          <h3>a work diary</h3>
+          <p class="big">It remembers what you did, so you don't have to.</p>
+          <p>keel quietly keeps a note of what you asked for and how it turned out, day
+          by day. Ask "what did I work on last week?" and you get a real answer —
+          including the research and dead ends that never show up anywhere else. Tell it
+          "I need to finish that review by Wednesday," shut the computer down, and ask
+          tomorrow "where do I stand?" — it knows.
+          <a href="/technical#activity">The machinery →</a></p>
+        </div>
+        <div class="card">
+          <h3>a shared notebook</h3>
+          <p class="big">Your preferences, your projects, written down once.</p>
+          <p>keel connects the assistant to a notebook of things that stay true — how you
+          like things built, what projects you have and where they live — so every new
+          conversation starts already knowing you, and a new computer can pick up where
+          the old one left off.
+          <a href="/technical#memory-wiring">The machinery →</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">why it stays small</span>
+      <h2>Tools like this usually grow until they become a second job</h2>
+      <p>Most add-ons for AI assistants keep growing: every clever idea gets bolted on,
+      until one day you're maintaining the add-on instead of doing your work. keel has
+      three house rules <em>for itself</em> to prevent that:</p>
+      <div style="margin-top:1.4rem">
         <div class="rule">
           <div class="num">01</div>
           <div>
-            <h3>Own your config, buy your capabilities</h3>
-            <p>Sync, guardrails, and setup are configuration — personal, unshippable,
-            correctly yours, a few hundred lines. Memory, recall, and reflection are
-            capabilities — general, valuable to strangers, already built better by people
-            who do it full time. Six separate times during design, “should I build this?”
-            turned out to be “someone already did.” What survived as worth owning is
-            small and unglamorous.</p>
+            <h3>Borrow the hard parts</h3>
+            <p>keel keeps only what nobody else can own for you — your rules, your
+            records. Everything else it borrows from tools whose whole job is doing that
+            one thing well.</p>
           </div>
         </div>
         <div class="rule">
           <div class="num">02</div>
           <div>
-            <h3>Documented surfaces only</h3>
-            <p>Claude Code ships ~20 releases in a week. The only way a layer under it
-            survives is to depend exclusively on surfaces Anthropic documents and treats
-            as contract. The system keel replaced parsed session transcripts out of an
-            undocumented format — it worked, and it was one format change from silent
-            breakage. If it isn't in the docs, keel doesn't read, write, or parse it.
-            The three exceptions are repairs, listed openly with blast radius and exit
-            conditions: <em>an exception stated is a debt; an exception denied is a
-            lie.</em></p>
+            <h3>Build on the paved road</h3>
+            <p>It only touches the parts of Claude Code that Anthropic publicly promises
+            to keep stable — which is why a week of platform updates doesn't break it.</p>
           </div>
         </div>
         <div class="rule">
           <div class="num">03</div>
           <div>
-            <h3>Admission by felt need</h3>
-            <p>Prose admits freely — teardown is <code>rm</code>. A test is admitted when
-            it catches a failure class that has already occurred in this repo. Runtime —
-            hooks, subcommands, anything a session executes — requires a need felt at
-            least once, by a real user, on a real machine. “Another harness found it
-            useful” is an argument from someone else's life. Anything that fails silent
-            on removal must ship with the check that would notice.</p>
+            <h3>Nothing is added until it's been missed</h3>
+            <p>Features earn their way in by being genuinely missed in real work — never
+            because they sound clever somewhere else. It's how keel stays a helper
+            instead of becoming a second job.</p>
           </div>
         </div>
       </div>
-      <p class="sub" style="margin-top:1.4rem">The full text lives in the repo as
-      <a href="https://github.com/JimmayVV/keel/tree/main/docs/adr">two short ADRs</a> and a
-      <a href="https://github.com/JimmayVV/keel/blob/main/CONTEXT.md">glossary</a>.</p>
+      <p class="sub" style="margin-top:1.4rem">
+      <a href="/technical#constitution">The constitution, with its real names →</a></p>
     </div>
   </section>
 
   <section>
     <div class="wrap">
-      <span class="kicker">memory</span>
-      <h2>Engines are swappable. Files are forever.</h2>
-      <p>There's an arms race in agentic memory, and Claude Code hasn't picked a winner.
-      keel's bet: <strong>own the interface and the substrate; let engines be
-      swappable.</strong> The substrate is markdown you control. The interface is Claude
-      Code's own documented hooks. An engine is a thing that turns experience into facts —
-      replaceable, and never load-bearing for remembering.</p>
-      <blockquote>Recall is local file reads. Retain is remote LLM work. Never invert it —
-      invert it and you get a system that stops remembering when your homelab reboots.
-      That's not a memory system, it's a dependency.</blockquote>
-      <p>Knowledge classifies by who can falsify it: a fact <code>grep</code> can falsify
-      is <em>derivable</em> — looked up live, never stored, so it cannot go stale. A fact
-      only you can falsify is <em>decided</em> — the notes store holds it, as a pointer
-      and a why. A fact a test suite can falsify is <em>logic</em> — it belongs in a
-      package, because memory describing code is strictly dominated by code both projects
-      import.</p>
-      <p><a href="https://github.com/JimmayVV/keel/blob/main/docs/MEMORY-ARCHITECTURE.md">The
-      full architecture →</a></p>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap">
-      <span class="kicker">deliberately not included</span>
-      <h2>The absences are load-bearing</h2>
-      <ul class="nolist">
-        <li>Parsing transcripts, history files, or any undocumented format</li>
-        <li>A memory engine, vector store, or LLM call of its own</li>
-        <li>A daemon, web UI, or background service</li>
-        <li>Credential management</li>
-        <li>A second sharing mechanism for anything an adapter already shares</li>
-      </ul>
-      <p class="sub">Every guard has an off-switch, every write has an undo. A guard that
-      can break your workflow is a guard you'll eventually disable — so the ingest
-      boundary never blocks, the log never calls a model, and the whole layer tears out
-      in one command.</p>
+      <span class="kicker">the promise</span>
+      <h2>A good houseguest</h2>
+      <p><strong>keel is easy to remove.</strong> Every part has an off switch,
+      installing it changes nothing about how you use the assistant, and uninstalling
+      leaves no trace. Helpful while it's there — and no drama when it leaves.</p>
     </div>
   </section>
 </Base>

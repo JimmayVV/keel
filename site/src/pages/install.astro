@@ -29,9 +29,10 @@ import Base from "../layouts/Base.astro";
         <div class="n">2</div>
         <div>
           <h3>Let Claude walk the configuration</h3>
-          <p>In a fresh session. It inspects what's already wired, asks only about the
-          gaps — device name, memory backend, your projects, recommended settings — and
-          drives the CLI's flag form itself. Re-runnable any time as a check-up.</p>
+          <p>In a fresh session. It looks at what's already set up, asks only about
+          what's missing — a name for this machine, where your notebook should live,
+          your projects, the recommended safety settings — and runs the commands
+          itself. Safe to run again any time as a check-up.</p>
           <pre><code><span class="p">/keel:setup</span></code></pre>
           <p>Prefer doing it by hand? <code>keel setup --memory-home ~/notes</code> and
           <code>claude plugin enable keel-memory</code> is the whole of it.</p>
