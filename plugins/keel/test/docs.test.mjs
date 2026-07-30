@@ -66,6 +66,39 @@ test("every `keel <subcommand>` the docs mention exists in the CLI", () => {
   }
 });
 
+// A cold review (2026-07-30) found the README naming one skill while four
+// shipped, and three version numbers disagreeing — drift the original two
+// checks were too narrow to see. Same disease, wider net.
+test("every skill keel ships is named in the README", () => {
+  const readme = readFileSync(join(root, "README.md"), "utf8");
+  for (const skill of readdirSync(join(root, "plugins", "keel", "skills"))) {
+    assert.ok(
+      new RegExp(`\\b${skill}\\b`).test(readme),
+      `README.md never mentions the \`${skill}\` skill — the box says less than it holds`,
+    );
+  }
+});
+
+test("the marketplace, the plugin, and the README agree on a version", () => {
+  const plugin = JSON.parse(
+    readFileSync(join(root, "plugins", "keel", ".claude-plugin", "plugin.json"), "utf8"),
+  );
+  const marketplace = JSON.parse(
+    readFileSync(join(root, ".claude-plugin", "marketplace.json"), "utf8"),
+  );
+  assert.equal(
+    marketplace.metadata?.version,
+    plugin.version,
+    "marketplace.json and plugin.json disagree on the version",
+  );
+  const [major, minor] = plugin.version.split(".");
+  assert.match(
+    readFileSync(join(root, "README.md"), "utf8"),
+    new RegExp(`\\*\\*Status:\\*\\* v${major}\\.${minor}\\b`),
+    `README status line does not say v${major}.${minor}`,
+  );
+});
+
 test("every *.mjs file the docs mention exists in the repo", () => {
   const mjsDirs = [
     join(root, "plugins", "keel", "hooks"),

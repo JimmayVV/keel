@@ -12,7 +12,7 @@ bulk — a minimal customization of the stock tool that lets your own work compo
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.
 
-> **Status:** v0.2, personal tool built in the open. Issues and PRs welcome and may be
+> **Status:** v0.4, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
 
 ---
@@ -56,7 +56,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `week` skill, and the `keel` CLI |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and four skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
@@ -282,7 +282,7 @@ problem rather than guarding it. About 600 lines of gating logic stopped existin
 ## Development
 
 ```sh
-node --test plugins/keel/test/*.test.mjs        # 125 tests
+node --test plugins/keel/test/*.test.mjs        # the whole suite
 claude plugin validate .                        # marketplace
 claude plugin validate ./plugins/keel           # each plugin
 claude --plugin-dir ./plugins/keel              # load without installing

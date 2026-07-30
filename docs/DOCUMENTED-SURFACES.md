@@ -44,6 +44,24 @@ documented integration point maintained by someone whose job it is.
 That trade — *give up a bespoke capability to stand on documented ground* — is
 the central design decision of this project.
 
+## Acknowledged exceptions — undocumented, depended on, said out loud
+
+The rule says a feature needing an undocumented surface does not ship. Three
+shipped anyway, as repairs for observed breakage, and a cold review
+(2026-07-30) caught the code calling one of them "documented." It is not, and
+pretending was worse than depending. Each is listed with its blast radius and
+the condition under which keel stops touching it.
+
+| Surface | Used for | If the surface changes | Leaves when |
+|---|---|---|---|
+| `installed_plugins.json` (`installPath`, `gitCommitSha`) | the PATH shim resolves the current install; `keel update` detects version-pinned no-op updates | the shim errors loudly (Claude's own plugin dispatch is unaffected); update loses the sha repair and says so | a documented surface exposes the installed path/commit |
+| `~/.claude.json` — `officialMarketplaceAutoInstall*` keys only | `keel migrate` repairs the one state no vanilla install can reach: marketplace absent while the flag says present | the repair becomes a no-op; every other migrate path is unaffected | Claude Code repairs that state itself |
+| `plugins/marketplaces/keel` git checkout | `keel update` fast-forwards a checkout that `marketplace update` has been observed to leave stale | ff-only on a clean tree — the worst case is "already up to date," the state it started in | `marketplace update` reliably moves the checkout |
+
+These are exceptions, not precedent: each exists because the breakage was
+observed on a real machine, each fails toward doing nothing, and each names
+its own exit.
+
 ## Enforcing it
 
 **Today this is a convention, not a runtime check.** There is no code that

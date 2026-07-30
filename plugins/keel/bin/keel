@@ -282,7 +282,7 @@ const ADAPTERS = {
     blurb: "Memory that revises its own conclusions over time, in the background.",
     available: false,
     reason:
-      "not shipped in v0.1 — the adapter was cut rather than released untested.\n" +
+      "not shipped yet — the adapter was cut rather than released untested.\n" +
       "        You almost certainly do not need it: everything keel does for weekly\n" +
       "        summaries and priorities runs in-session on your existing subscription.\n" +
       "        Reflection only matters if you want derivation while you are away.",
@@ -294,7 +294,7 @@ const ADAPTERS = {
     flag: "hindsight-url",
     prompt: "Hindsight base URL?",
     defaultValue: () => "http://localhost:8888",
-    prereq: () => ({ ok: false, what: "the keel-reflect adapter (not in v0.1)", fix: "see docs/MEMORY-ARCHITECTURE.md" }),
+    prereq: () => ({ ok: false, what: "the keel-reflect adapter (not shipped yet)", fix: "see docs/MEMORY-ARCHITECTURE.md" }),
     validate: (v) => (/^https?:\/\//.test(v ?? "") ? null : "must be an http(s) URL"),
     postSetup: () => null,
   },
@@ -408,7 +408,7 @@ function cmdStatus() {
     const pre = a.prereq();
     const mark = !a.available ? c.dim("—") : val ? (pre.ok ? c.green("●") : c.yellow("●")) : c.dim("○");
     const state = !a.available
-      ? c.dim("not in v0.1")
+      ? c.dim("not shipped yet")
       : val
         ? c.dim(val)
         : c.dim("not configured");
@@ -851,8 +851,15 @@ function cmdUpdate() {
    *
    * So don't trust the report. Compare the commit Claude Code recorded at
    * install against the commit the marketplace checkout actually holds, and
-   * reinstall when they diverge. Both values come from documented surfaces:
-   * installed_plugins.json and the checkout's own git HEAD.
+   * reinstall when they diverge.
+   *
+   * Honesty about the ground this stands on — a cold review caught an earlier
+   * version of this comment calling installed_plugins.json a documented
+   * surface. It is not. It is an acknowledged exception, listed with its
+   * blast radius in docs/DOCUMENTED-SURFACES.md, kept because no documented
+   * surface exposes the installed commit. The checkout's git HEAD is ours to
+   * read; the JSON is borrowed ground, and saying otherwise was worse than
+   * standing on it.
    */
   const wantSha = marketplaceSha();
   const haveSha = installedSha("keel");

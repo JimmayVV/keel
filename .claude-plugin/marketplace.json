@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A safety and durability layer for Claude Code \u2014 that also wires your memory stack.",
-    "version": "0.1.0"
+    "version": "0.4.0"
   },
   "plugins": [
     {
