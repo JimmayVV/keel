@@ -159,6 +159,18 @@ Or by hand:
 /plugin install keel@keel
 ```
 
+That pair is the whole install — hooks, CLI, and skills arrive together. Then,
+in a fresh session, let Claude walk the configuration:
+
+```
+/keel:setup
+```
+
+It inspects what's already wired, asks only about the gaps — device name,
+memory backend, recommended settings — and drives the CLI's flag form itself.
+Re-runnable, non-destructive on an existing install, and the same conversation
+on a greenfield machine.
+
 For the manual reset with every step explained, see
 [docs/FRESH-START.md](docs/FRESH-START.md).
 
