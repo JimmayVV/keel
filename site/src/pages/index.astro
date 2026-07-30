@@ -1,0 +1,135 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base>
+  <header class="hero">
+    <div class="wrap">
+      <h1><span class="tick">▲</span> keel</h1>
+      <p class="lede"><strong>A keel is the beam a hull is built on</strong> — laid first,
+      under everything, keeping the vessel steady without ever being the boat. That is
+      exactly what this is to <a href="https://code.claude.com">Claude Code</a>: a thin,
+      durable layer underneath that holds your sessions steady and your setup on course.</p>
+      <div class="cta">
+        <a class="btn primary" href="/install">install in two lines</a>
+        <a class="btn ghost" href="https://github.com/JimmayVV/keel">source ↗</a>
+      </div>
+      <div class="waterline" aria-hidden="true">
+        <svg viewBox="0 0 960 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <line class="water" x1="0" y1="38" x2="960" y2="38" stroke-width="1" stroke-dasharray="2 7" opacity="0.7"/>
+          <path class="hull" d="M180 38 C 260 118, 700 118, 780 38" stroke-width="2"/>
+          <rect class="fin" x="474" y="100" width="12" height="42" rx="6"/>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">what's in the box</span>
+      <h2>Guardrails, memory wiring, and a record of your work</h2>
+      <p class="sub">Everything rides on surfaces Anthropic documents — so it survives the
+      platform's weekly releases, and tearing any of it out is one command that leaves no
+      residue.</p>
+      <div class="grid cols3">
+        <div class="card">
+          <h3>ingest boundary</h3>
+          <p>Every web and MCP result wrapped as <strong>data, never instructions</strong> —
+          closing the indirect prompt-injection path where a poisoned page tells your agent
+          to exfiltrate, install, or approve something. Read-only: it never blocks a call,
+          never mutates a result.</p>
+        </div>
+        <div class="card">
+          <h3>security guard</h3>
+          <p>Blocks irreversible catastrophe, asks before exfiltration-shaped commands —
+          and knows a Dockerfile that mentions <code>rm -rf</code> is text, not code.
+          Fails closed on a broken policy, and your own rules can exempt any shipped one.</p>
+        </div>
+        <div class="card">
+          <h3>commit hygiene</h3>
+          <p>Blocks attribution trailers you never want in history. A preference a model
+          will forget, because it's one line competing with a hundred others — a hook
+          doesn't forget.</p>
+        </div>
+        <div class="card">
+          <h3>activity log</h3>
+          <p>What you asked and what was concluded, tagged by repo and branch — so
+          research, review, and dead ends that never produce a commit are still
+          recoverable weeks later. No model calls, documented payloads only.</p>
+        </div>
+        <div class="card">
+          <h3>memory wiring</h3>
+          <p>Third-party memory backends bolted on over documented MCP surfaces. keel owns
+          the interface; engines are swappable. It ships no vector store, no LLM call, no
+          daemon of its own.</p>
+        </div>
+        <div class="card">
+          <h3>five skills</h3>
+          <p><code>week</code> · <code>deck</code> · <code>telos</code> ·
+          <code>guide</code> · <code>setup</code> — what happened, what's promised, what
+          it's all for, how it works, and how it's wired.
+          <a href="/skills">The tour →</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">install</span>
+      <h2>Two lines. Vanilla or years-old setup, same two lines.</h2>
+      <pre><code><span class="p">/plugin</span> marketplace add JimmayVV/keel
+<span class="p">/plugin</span> install keel@keel</code></pre>
+      <p class="sub">That is the whole install — a normal plugin, additive by construction.
+      Then <code>/keel:setup</code> walks the configuration as a conversation, asking only
+      about the gaps. <a href="/install">The full story, including the teardown →</a></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">the rules</span>
+      <h2>Small on purpose, with a written constitution</h2>
+      <div style="margin-top:1.6rem">
+        <div class="rule">
+          <div class="num">01</div>
+          <div>
+            <h3>Own your config, buy your capabilities</h3>
+            <p>Guardrails and setup are configuration — personal, a few hundred lines,
+            correctly yours. Memory and recall are capabilities — already built better by
+            people who do it full time. keel wires them in. It does not reimplement them.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="num">02</div>
+          <div>
+            <h3>Documented surfaces only</h3>
+            <p>If Anthropic hasn't documented it, keel doesn't read, write, or parse it.
+            The undocumented surfaces it does touch are three repairs, listed in the open
+            with their blast radius and exit conditions.</p>
+          </div>
+        </div>
+        <div class="rule">
+          <div class="num">03</div>
+          <div>
+            <h3>Admission by felt need</h3>
+            <p>Prose is free. A test must have caught a failure that already occurred.
+            Runtime requires a need felt at least once, by a real user, on a real machine.
+            This is the rule that keeps a harness from becoming a second product.</p>
+          </div>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:1.4rem"><a href="/philosophy">Why it's shaped this way →</a></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">honestly</span>
+      <h2>A personal tool, built in the open</h2>
+      <p class="sub">v0.4. Issues and PRs welcome and may be politely declined; fork
+      freely — that's what the licence is for. It is opinionated in the way only a tool
+      with a single demanding user can be, and those opinions are written down where you
+      can disagree with them.</p>
+    </div>
+  </section>
+</Base>

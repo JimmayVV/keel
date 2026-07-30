@@ -1,5 +1,6 @@
 # Deploys site/ to GitHub Pages (keel.redlinelabs.dev).
-# The site is hand-written static HTML — there is no build step to break.
+# Astro static build — zero client JS in the output; the build step exists
+# for layouts and pages, not for a framework runtime.
 name: pages
 
 on:
@@ -25,8 +26,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: site/dist
       - id: deployment
         uses: actions/deploy-pages@v4

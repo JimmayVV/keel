@@ -1,0 +1,91 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="install — keel">
+  <header class="pagehead">
+    <div class="wrap">
+      <span class="kicker">install</span>
+      <h2>Two lines in, one conversation to configure, one command out</h2>
+      <p class="sub">The uninstall story is as documented as the install one — a layer you
+      can't turn off is a layer you'll eventually resent.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <h3>Install the plugin</h3>
+          <p>Inside Claude Code — vanilla or years-old setup, same two lines. A plugin
+          install is additive by construction; nothing about your existing configuration
+          is touched.</p>
+          <pre><code><span class="p">/plugin</span> marketplace add JimmayVV/keel
+<span class="p">/plugin</span> install keel@keel</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <h3>Let Claude walk the configuration</h3>
+          <p>In a fresh session. It inspects what's already wired, asks only about the
+          gaps — device name, memory backend, your projects, recommended settings — and
+          drives the CLI's flag form itself. Re-runnable any time as a check-up.</p>
+          <pre><code><span class="p">/keel:setup</span></code></pre>
+          <p>Prefer doing it by hand? <code>keel setup --memory-home ~/notes</code> and
+          <code>claude plugin enable keel-memory</code> is the whole of it.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <h3>There is no step three</h3>
+          <p>No launcher, no wrapper, no alias — you invoke <code>claude</code> exactly as
+          you would without keel. Everything it contributes loads into a plain session.
+          <code>keel update</code> pulls the latest whenever you like, and verifies by
+          commit rather than trusting a version string.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">requirements</span>
+      <h2>Node, and honestly not much else</h2>
+      <table>
+        <tr><td>node</td><td>The hooks are plain <code>.mjs</code> with <strong>zero
+        dependencies</strong>. Your machines may not have bun, deno, python, or jq — node
+        is the portable floor.</td></tr>
+        <tr><td>uv + python ≥ 3.12</td><td>Only if you enable the <code>keel-memory</code>
+        adapter — and <code>uv</code> provisions the interpreter for you, which is why
+        upstream recommends it.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">the exits</span>
+      <h2>Leaving is one command, and it's documented</h2>
+      <table>
+        <tr><td>KEEL_GUARD_OFF=1</td><td>Disables the security guard entirely.</td></tr>
+        <tr><td>KEEL_ACTIVITY_OFF=1</td><td>Stops activity capture without uninstalling.</td></tr>
+        <tr><td>~/.config/keel/policy.json</td><td>Your policy — adds rules, or
+        <strong>exempts</strong> any shipped one via <code>bash.allow</code>, which is
+        checked first and wins outright.</td></tr>
+        <tr><td>/plugin uninstall keel@keel</td><td>Everything gone. Settings writes were
+        append-only and backed up; your config was never keel's to keep.</td></tr>
+      </table>
+
+      <div class="note"><strong>The fresh-start ceremony</strong> is the one thing that
+      stays a deliberate, human-run script: resetting an accumulated config to vanilla with
+      keel on top. <code>bash scripts/install.sh</code> walks it — never runs
+      <code>sudo</code>, never deletes (the reset is a <code>mv</code> with the undo
+      printed first), and <code>keel migrate</code> can put back marketplaces and plugins
+      from the old config at any point after, one at a time or all at once.</div>
+    </div>
+  </section>
+</Base>
