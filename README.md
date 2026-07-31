@@ -65,9 +65,9 @@ user should opt into"* — so they install dormant. One command turns each on.
 ### The ingest boundary
 
 Every `WebFetch`, `WebSearch`, and `mcp__*` result is wrapped in an envelope marking it as
-untrusted **data**, not instructions. This closes the indirect prompt-injection path where a
-poisoned web page or ticket body tells the agent to exfiltrate, install, or approve
-something. It also flags zero-width characters and bidirectional overrides — the standard
+untrusted **data**, not instructions. This raises the cost of the indirect prompt-injection
+path — a poisoned web page or ticket body telling the agent to exfiltrate, install, or
+approve something — as advisory context, not enforcement. `KEEL_INGEST_OFF=1` disables it. It also flags zero-width characters and bidirectional overrides — the standard
 ways to hide instructions from human review.
 
 Strictly read-only: it never blocks a call and never mutates a result. A guard that can

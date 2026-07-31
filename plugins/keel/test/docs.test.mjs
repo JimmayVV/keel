@@ -122,3 +122,31 @@ test("every *.mjs file the docs mention exists in the repo", () => {
     }
   }
 });
+
+// Phrases a cold audit (2026-07-30) proved false, graded 4/10 on faithfulness
+// of guarantees. Each was fixed once; this keeps them fixed. Per ADR-0001: a
+// test is admitted when it catches a failure class that already occurred —
+// this class is "marketing register widening a guarantee past its mechanism."
+test("claims the audit proved false stay dead", () => {
+  const pages = [
+    join(root, "README.md"),
+    ...readdirSync(join(root, "site", "src", "pages")).map((f) =>
+      join(root, "site", "src", "pages", f),
+    ),
+  ];
+  const dead = [
+    [/leaves? no trace/i, "uninstall leaves your data, on purpose — say what stays"],
+    [/clos(es|ing) the indirect prompt-injection/i, "it raises the cost; advisory, not enforcement"],
+    [/anything that would send your (private )?files/i, "scope to the shapes the regexes cover"],
+    [/every guard has an off[- ]switch, every write has an undo\b(?![\s\S]{0,80}KEEL_)/i, "only true while each switch exists — cite them"],
+  ];
+  for (const file of pages) {
+    const text = readFileSync(file, "utf8");
+    for (const [re, why] of dead) {
+      assert.ok(
+        !re.test(text),
+        `${file.slice(root.length + 1)} resurrects a disproven claim (${re}): ${why}`,
+      );
+    }
+  }
+});

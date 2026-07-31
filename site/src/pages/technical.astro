@@ -162,10 +162,13 @@ import Base from "../layouts/Base.astro";
         <li>Credential management</li>
         <li>A second sharing mechanism for anything an adapter already shares</li>
       </ul>
-      <p class="sub">Every guard has an off-switch, every write has an undo. A guard that
-      can break your workflow is a guard you'll eventually disable — so the ingest
-      boundary never blocks, the log never calls a model, and the whole layer tears out
-      in one command.</p>
+      <p class="sub">Every guard has an off-switch — <code>KEEL_GUARD_OFF</code>,
+      <code>KEEL_ACTIVITY_OFF</code>, <code>KEEL_TRAILERS_OFF</code>,
+      <code>KEEL_INGEST_OFF</code> — and every write has a backup and an undo. A guard
+      that can break your workflow is a guard you'll eventually disable — so the ingest
+      boundary never blocks, the log never calls a model, and
+      <a href="https://github.com/JimmayVV/keel/blob/main/docs/UNINSTALL.md">the whole
+      layer tears out in two commands</a>.</p>
     </div>
   </section>
 </Base>
