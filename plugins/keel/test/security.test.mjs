@@ -396,13 +396,17 @@ const bashAtHome = (command) => atHome({ tool_name: "Bash", tool_input: { comman
 
 describe("path globs: ** crosses directories, * does not", () => {
   for (const p of [
-    `${H}/.ssh/id_rsa`,
     `${H}/.ssh/keys/deploy_key`, // the case `~/.ssh/*` missed
     `${H}/.aws/sso/cache/abc.json`,
-    `${H}/.gnupg/private-keys-v1.d/ABCD.key`,
+    `${H}/.ssh/config`,
     `${H}/.claude/settings.json`,
   ]) {
     test(`asks before writing ${p}`, () => assert.ok(isAsk(write(p)), `should ask: ${p}`));
+  }
+
+  // Key material is stronger than ask now: zero-access, both directions.
+  for (const p of [`${H}/.ssh/id_rsa`, `${H}/.gnupg/private-keys-v1.d/ABCD.key`]) {
+    test(`blocks writing ${p} outright`, () => assert.equal(write(p).code, 2, `should block: ${p}`));
   }
 
   // Widening to ** must not turn a neighbouring name into a match.
@@ -474,7 +478,6 @@ describe("noDelete: deleting a protected path", () => {
     ["a same-named directory elsewhere", "rm -rf /tmp/.ssh/id_rsa"],
     ["an unrelated file under home", "rm -rf ~/projects/old"],
     ["a neighbour of a protected file", "rm ~/.claude/settings.local.json"],
-    ["reading a key is not deleting it", "cat ~/.ssh/id_rsa"],
     ["copying a key is not deleting it", "cp ~/.ssh/id_rsa /tmp/k"],
     ["a command that merely mentions rm", "echo rm ~/.ssh/id_rsa"],
     ["node_modules, the thing people actually delete", "rm -rf node_modules"],
@@ -483,6 +486,12 @@ describe("noDelete: deleting a protected path", () => {
       assert.ok(isAllow(bashAtHome(cmd)), `${cmd} must not be blocked`);
     });
   }
+
+  // Reading a key is still not DELETING it — noDelete stays out of the way —
+  // but it is no longer invisible either: the transcript-sink rule asks.
+  test("reading a key is not deleting it — it asks, and nothing blocks it", () => {
+    assert.ok(isAsk(bashAtHome("cat ~/.ssh/id_rsa")), "confirm, not block, not silence");
+  });
 
   test("prose about deleting a key is not deleting a key", () => {
     const r = bashAtHome(`git commit -m "explain why rm ~/.ssh/id_rsa is now blocked"`);
@@ -615,4 +624,87 @@ describe("fail-closed covers every mutating tool", () => {
       assert.equal(r.status, wantBlocked ? 2 : 0);
     });
   }
+});
+
+
+/**
+ * The C-then-A design: private key material is zero-access by default (block,
+ * not ask — there is no accidental flow that needs it), and the block message
+ * itself documents the demotion: move the glob into your overlay's
+ * paths.confirmRead and reads become prompts instead of walls. Writes to the
+ * same material stay blocked even in ask-mode. paths.allow (shipped) keeps
+ * public keys frictionless.
+ */
+describe("private key material: blocked by default, demotable to ask", () => {
+  const read = (file_path) => atHome({ tool_name: "Read", tool_input: { file_path } });
+
+  test("reading a private key is blocked, with both exits in the message", () => {
+    const r = read(`${H}/.ssh/id_rsa`);
+    assert.equal(r.code, 2, "zero-access must block the read");
+    assert.match(r.stderr, /left this machine/i, "the block must carry the why");
+    assert.match(r.stderr, /paths\.allow/, "the block must teach the one-file exit");
+    assert.match(r.stderr, /confirmRead/, "the block must teach the ask-mode demotion");
+  });
+
+  test("reading a PUBLIC key is not even slowed down", () => {
+    assert.ok(isAllow(read(`${H}/.ssh/id_rsa.pub`)), "shipped paths.allow covers *.pub");
+  });
+
+  test("reading ~/.ssh/config is untouched — the scope is keys, not the directory", () => {
+    assert.ok(isAllow(read(`${H}/.ssh/config`)));
+  });
+
+  test("aws credentials and .credentials.json are zero-access too", () => {
+    assert.equal(read(`${H}/.aws/credentials`).code, 2);
+    assert.equal(read(`${H}/.credentials.json`).code, 2);
+  });
+
+  test("an overlay confirmRead glob demotes the block to a reasoned prompt", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-demote-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(file, JSON.stringify({ paths: { confirmRead: ["~/.ssh/id_*"] } }));
+    const r = run(
+      { tool_name: "Read", tool_input: { file_path: "/home/testuser/.ssh/id_rsa" } },
+      { HOME: "/home/testuser", KEEL_POLICY_FILE: file },
+    );
+    rmSync(dir, { recursive: true, force: true });
+    assert.ok(isAsk(r), "ask-mode must win over the shipped zero-access rule for reads");
+    assert.match(
+      r.json.hookSpecificOutput.permissionDecisionReason,
+      /first half of leaking it/,
+      "the prompt must carry the why, not just Proceed?",
+    );
+  });
+
+  test("ask-mode does NOT demote writes — key writes stay blocked", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-demote2-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(file, JSON.stringify({ paths: { confirmRead: ["~/.ssh/id_*"] } }));
+    const r = run(
+      { tool_name: "Write", tool_input: { file_path: "/home/testuser/.ssh/id_rsa" } },
+      { HOME: "/home/testuser", KEEL_POLICY_FILE: file },
+    );
+    rmSync(dir, { recursive: true, force: true });
+    assert.equal(r.code, 2, "confirmRead is a read demotion only");
+  });
+
+  test("the guard guards its own demotion: writing keel's policy file prompts", () => {
+    assert.ok(isAsk(write(`${H}/.config/keel/policy.json`)), "policy edits must go through a human");
+  });
+});
+
+describe("bash side door: rendering key material into the transcript", () => {
+  test("cat of a private key asks, with the why", () => {
+    const r = bashAtHome("cat ~/.ssh/id_rsa");
+    assert.ok(isAsk(r), "bare cat of a key is the same sink as compose config");
+    assert.match(r.json.hookSpecificOutput.permissionDecisionReason, /rotation/i);
+  });
+
+  test("cat of a public key is left alone", () => {
+    assert.ok(isAllow(bashAtHome("cat ~/.ssh/id_ed25519.pub")));
+  });
+
+  test("aws credentials via head is caught too", () => {
+    assert.ok(isAsk(bashAtHome("head -3 ~/.aws/credentials")));
+  });
 });

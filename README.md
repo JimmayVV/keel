@@ -12,7 +12,7 @@ bulk — a minimal customization of the stock tool that lets your own work compo
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.
 
-> **Status:** v0.4, personal tool built in the open. Issues and PRs welcome and may be
+> **Status:** v0.5, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
 
 ---
@@ -85,6 +85,12 @@ Those exfiltration rules are why this exists rather than deferring to
 `permissions.deny`. The native deny list matches command *prefixes*, which handles
 `Bash(rm -rf /:*)` perfectly and cannot express "curl with a credential file as its
 payload". Run both — the deny list is a cheaper, earlier stop where it applies.
+
+Private key and credential material (`~/.ssh/id_*`, `~/.aws/credentials`, and
+kin) is **zero-access by default** — reads and writes blocked, public keys
+exempt — and the block message itself documents the demotion: move the glob
+into your policy's `paths.confirmRead` and reads become reasoned prompts
+instead of walls. Rare workflows get free reign; never by accident.
 
 It distinguishes **data from code in a heredoc**. Writing a Dockerfile that happens
 to contain a recursive delete is file content and passes; the same text piped into

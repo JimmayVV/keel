@@ -36,7 +36,10 @@ import Base from "../layouts/Base.astro";
           <code>bash</code> is code. Fails closed on a broken policy for every mutating
           tool (Bash, Edit, Write — reads stay open); your policy at
           <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
-          via <code>bash.allow</code> and <code>paths.allow</code>.</p>
+          via <code>bash.allow</code> and <code>paths.allow</code>. Private key material
+          is zero-access by default; the block message documents the demotion to
+          ask-mode (<code>paths.confirmRead</code>), and editing the policy file itself
+          prompts — the guard guards its own demotion.</p>
         </div>
         <div class="card">
           <h3 id="trailers">commit hygiene</h3>

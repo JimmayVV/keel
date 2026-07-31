@@ -184,6 +184,7 @@ if (overlay) {
       ...(policy.paths ?? {}),
       allow: merge("paths", "allow"),
       zeroAccess: merge("paths", "zeroAccess"),
+      confirmRead: merge("paths", "confirmRead"),
       readOnly: merge("paths", "readOnly"),
       confirmWrite: merge("paths", "confirmWrite"),
       noDelete: merge("paths", "noDelete"),
@@ -381,18 +382,54 @@ function checkPath(filePath) {
   // and wins outright.
   if (hit(p.allow)) return;
 
+  // Ask-mode wins over zero-access FOR READS — that is the entire demotion
+  // mechanism. A glob the user moved into their overlay's confirmRead turns
+  // the shipped block into a prompt; writes to the same material stay blocked.
+  if (tool === "Read" && hit(p.confirmRead)) {
+    record("confirm", "read of protected material", abs);
+    ask(
+      `[keel] Reading protected material:\n\n  ${abs}\n\n` +
+        `Whatever is read lands in the transcript, which is sent to the model\n` +
+        `provider — reading a secret is the first half of leaking it. You put\n` +
+        `these files in ask-mode deliberately; if you didn't ask for this read,\n` +
+        `deny it.`,
+    );
+  }
+
   if (hit(p.zeroAccess)) {
     record("blocked", "zero-access path", abs);
-    block("zero-access path", abs);
+    // This block is also the escalation UI: stderr reaches the model, which
+    // relays it — so the message must carry the why and both exits, or the
+    // user learns to fight the guard instead of steering it. "Mode" is which
+    // list the glob lives in; demotion to ask-mode is a policy edit, and that
+    // edit itself prompts, because this file is in confirmWrite.
+    block(
+      "zero-access path (private key or credential material)",
+      `${abs}\n\n` +
+        `Why this is a hard stop: anything read into the conversation is sent to the\n` +
+        `model provider and sits in the transcript — key material that has been read\n` +
+        `has effectively left this machine, and the only undo is rotation.\n\n` +
+        `If the user really wants this, two exits in ${USER_POLICY}:\n` +
+        `  - this file only:  add "${abs}" to paths.allow\n` +
+        `  - ask-mode:        add the matching glob to paths.confirmRead in your\n` +
+        `                     overlay (a prompt instead of a block, every time)\n` +
+        `Relay this choice to the user — do not pick for them. Editing that policy\n` +
+        `file will itself raise a confirmation prompt; that is by design.`,
+    );
   }
-  if (tool === "Read") return; // reads past zeroAccess are fine
+  if (tool === "Read") return; // reads past allow/confirmRead/zeroAccess are fine
   if (hit(p.readOnly)) {
     record("blocked", "read-only path", abs);
     block("read-only path", abs);
   }
   if (hit(p.confirmWrite)) {
     record("confirm", "write to protected path", abs);
-    ask(`[keel] Writing to a protected path requires confirmation:\n\n  ${abs}\n\nProceed?`);
+    ask(
+      `[keel] Writing to a protected path:\n\n  ${abs}\n\n` +
+        `Files here are load-bearing for security or identity — a bad write is\n` +
+        `recoverable, but usually only after something else has already gone\n` +
+        `wrong. If you didn't ask for this write, deny it.`,
+    );
   }
 }
 

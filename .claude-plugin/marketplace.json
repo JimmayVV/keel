@@ -5,8 +5,8 @@
     "url": "https://github.com/JimmayVV"
   },
   "metadata": {
-    "description": "A safety and durability layer for Claude Code \u2014 that also wires your memory stack.",
-    "version": "0.4.0"
+    "description": "A safety and durability layer for Claude Code — that also wires your memory stack.",
+    "version": "0.5.0"
   },
   "plugins": [
     {
@@ -17,7 +17,7 @@
     {
       "name": "keel-memory",
       "source": "./plugins/keel-memory",
-      "description": "Durable notes adapter \u2014 Basic Memory over local markdown. No server required."
+      "description": "Durable notes adapter — Basic Memory over local markdown. No server required."
     }
   ]
 }
