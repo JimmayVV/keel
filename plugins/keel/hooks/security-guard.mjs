@@ -32,10 +32,32 @@
  * Derived from PAI's SecurityValidator (Daniel Miessler's PAI, MIT).
  */
 
-import { readFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, appendFileSync, mkdirSync, existsSync, realpathSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * Resolve symlinks before a path is judged. A fourth audit demonstrated the
+ * lexical hole: `path.resolve` does not follow links, so a symlink named
+ * anywhere pointing at ~/.ssh/id_rsa or the policy file let a Write sail past
+ * the "airtight" file-tool tier. Follow the link (or, for a not-yet-existing
+ * target, the link on its parent directory) so the rule sees the real file.
+ * Falls back to the lexical path when nothing resolves — the conservative
+ * direction, never fewer matches.
+ */
+function canonicalPath(fp) {
+  const abs = resolve(expandHome(fp));
+  try {
+    return realpathSync(abs);
+  } catch {
+    try {
+      return join(realpathSync(dirname(abs)), basename(abs));
+    } catch {
+      return abs;
+    }
+  }
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -374,14 +396,21 @@ function globToRe(glob) {
  */
 function checkPath(filePath) {
   const abs = resolve(expandHome(filePath));
+  // The symlink-resolved form. A rule matches if EITHER the literal path or
+  // its real target hits — so a symlink alias cannot launder a write past a
+  // path rule (fourth-audit fix), and a rule that names a literal still works.
+  const real = canonicalPath(filePath);
   const p = policy.paths ?? {};
-  const hit = (list) => (list ?? []).some((g) => globToRe(g).test(abs));
+  const hit = (list) =>
+    (list ?? []).some((g) => globToRe(g).test(abs) || globToRe(g).test(real));
 
   // The guard's own policy file, wherever KEEL_POLICY_FILE or XDG put it —
   // checked BEFORE the allow list, which must not be able to exempt edits to
   // itself, and dynamically, because the shipped confirmWrite glob only knows
-  // the default location (the XDG bug a cold audit caught).
-  if (tool !== "Read" && abs === resolve(expandHome(USER_POLICY))) {
+  // the default location (the XDG bug a cold audit caught). Symlink-resolved,
+  // so a link aliasing the policy file is caught too.
+  const policyReal = canonicalPath(USER_POLICY);
+  if (tool !== "Read" && (abs === resolve(expandHome(USER_POLICY)) || real === policyReal)) {
     record("confirm", "edit of the guard's own policy", abs);
     ask(
       `[keel] Editing keel's security policy:\n\n  ${abs}\n\n` +
@@ -566,8 +595,17 @@ if (tool === "Bash") {
     const mentions = [USER_POLICY, canonical]
       .flatMap((p) => (p.startsWith(home) ? [p, "~" + p.slice(home.length)] : [p]));
     const writeShape =
-      /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b|\bsponge\b|writeFileSync|writeFile\b|Bun\.write|\bfs\.write|\.write_text|shutil\.(copy|copyfile|move)|File\.(write|open)|open\s*\([^)]*,\s*['"]?[wax])/i;
-    if (mentions.some((p) => scanned.includes(p)) && writeShape.test(scanned)) {
+      /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b|\bsponge\b|writeFileSync|writeFile\b|Bun\.write|\bfs\.write|\.write_text|\bshutil\.(copy|copyfile|move)|\bos\.(replace|rename)|File\.(write|open)|\bIO\.write|open\s*\([^)]*,\s*['"]?[wax])/i;
+    // An interpreter that so much as NAMES the policy path is prompted,
+    // write-shape or not — enumerating every language's write idiom is a
+    // losing game (the fourth audit slipped `ruby IO.write`, `os.replace`,
+    // `node readFileSync`), and reading your own guard config through a
+    // scripting one-liner is rare enough that a prompt there is no burden.
+    // Reading the policy with a plain shell tool stays free.
+    const interpreter =
+      /\b(?:node|deno|bun|python[0-9.]*|ruby|perl|php|ex|vim?|awk|xargs|env|eval|source)\b/i;
+    const mentioned = mentions.some((p) => scanned.includes(p));
+    if (mentioned && (writeShape.test(scanned) || interpreter.test(scanned))) {
       record("confirm", "shell write to the guard's own policy", raw);
       ask(
         `[keel] This command writes to keel's security policy:\n\n  ${canonical}\n\n` +

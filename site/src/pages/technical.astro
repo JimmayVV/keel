@@ -37,19 +37,23 @@ import Base from "../layouts/Base.astro";
           tool (Bash, Edit, Write — reads stay open); your policy at
           <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
           via <code>bash.allow</code> and <code>paths.allow</code>. Private key material
-          is zero-access to the file tools by default. Shell and interpreter reads
-          that render it into the transcript — <code>cat</code>, <code>cp</code>,
-          <code>openssl</code>, <code>tar ~/.ssh</code>, <code>python -c
-          "open(key)"</code> — prompt; pair with <code>keel settings</code>'s native
-          denies for defense in depth. The block message documents the demotion to
-          ask-mode (<code>paths.confirmRead</code>). Editing the policy file prompts
-          across tiers: the file tools at whatever path <code>KEEL_POLICY_FILE</code>
-          names, and shell or interpreter writes to it (a redirect,
-          <code>sed -i</code>, or a <code>node -e</code> that writes it) — checked
-          before the overlay's own allow-list, so an allow-everything overlay cannot
-          exempt its own rewrite. A variable-indirected path can still slip the shell
-          check; the file-tool tier is airtight regardless, and
-          <code>KEEL_GUARD_OFF=1</code> is the honest total switch.</p>
+          is zero-access to the file tools by default — and the file-tool check
+          resolves symlinks first, so an alias can't launder a write to a key or the
+          policy past it. Through Bash it's defense in depth: shell reads
+          (<code>cat</code>, <code>cp</code>, <code>openssl</code>,
+          <code>tar ~/.ssh</code>) and the common interpreters
+          (<code>node</code>, <code>python</code>, <code>ruby</code>,
+          <code>perl</code> naming a key) prompt — a genuinely exotic form may still
+          slip, which is why the file-tool tier is the guarantee and Bash is the net.
+          The block message documents the demotion to ask-mode
+          (<code>paths.confirmRead</code>). Editing the policy file prompts across
+          tiers: the file tools at whatever path <code>KEEL_POLICY_FILE</code> names,
+          and shell or interpreter writes to it (a redirect, <code>sed -i</code>,
+          <code>node -e</code>, <code>ruby -e</code>) — checked before the overlay's
+          own allow-list, so an allow-everything overlay cannot exempt its own
+          rewrite. A variable-indirected shell path can still slip; the file-tool
+          tier catches it, and <code>KEEL_GUARD_OFF=1</code> is the honest total
+          switch.</p>
         </div>
         <div class="card">
           <h3 id="trailers">commit hygiene</h3>

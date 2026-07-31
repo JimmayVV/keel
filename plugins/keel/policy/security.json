@@ -130,6 +130,14 @@
       {
         "pattern": "open\\s*\\(\\s*['\"][^'\"]*(\\.aws/credentials|\\.credentials\\.json)['\"]",
         "reason": "An interpreter is reading credential material into the transcript. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
+      },
+      {
+        "pattern": "\\b(node|deno|bun|python[0-9.]*|ruby|perl|php)\\b[^|&]*\\.ssh/([\\w.-]+/)*id_[\\w.-]*?(?=[\"'\\s|;&)]|$)(?<!\\.pub)",
+        "reason": "An interpreter is reading private key material into the transcript, which is sent to the model provider \u2014 the only undo is rotation. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
+      },
+      {
+        "pattern": "\\b(node|deno|bun|python[0-9.]*|ruby|perl|php)\\b[^|&]*(\\.aws/credentials|\\.credentials\\.json|private-keys-v1\\.d)",
+        "reason": "An interpreter is reading credential material into the transcript. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
       }
     ],
     "alert": [

@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), "..", "hooks", "security-guard.mjs");
@@ -802,9 +802,13 @@ describe("interpreter bypass of the policy self-guard (third audit)", () => {
     });
   }
 
-  test("an interpreter merely READING the policy stays free", () => {
-    const r = run({ tool_name: "Bash", tool_input: { command: `python3 -c "print(open('${P}').read())"` } }, POL);
-    assert.ok(isAllow(r), "reading the policy is not writing it");
+  test("a SHELL read of the policy stays free; an interpreter read prompts", () => {
+    // Shell tools are common and cheaply classified — cat stays free.
+    assert.ok(isAllow(run({ tool_name: "Bash", tool_input: { command: `cat ${P}` } }, POL)));
+    // An interpreter that names the policy prompts even to read it: telling
+    // read from write inside an arbitrary payload is the idiom-enumeration
+    // game the fourth audit won, so we prompt and accept the rare read cost.
+    assert.ok(isAsk(run({ tool_name: "Bash", tool_input: { command: `python3 -c "print(open('${P}').read())"` } }, POL)));
   });
 
   test("even an allow-everything overlay cannot exempt an interpreter rewrite of itself", () => {
@@ -830,5 +834,61 @@ describe("key material via interpreter and archiver (third audit)", () => {
   }
   test("an interpreter reading a PUBLIC key is left alone", () => {
     assert.ok(isAllow(bashAtHome("python3 -c \"print(open('/home/testuser/.ssh/id_rsa.pub').read())\"")));
+  });
+});
+
+
+describe("fourth audit: interpreter and symlink bypasses", () => {
+  const POL = { HOME: "/home/testuser", KEEL_POLICY_FILE: "/home/testuser/.config/keel/policy.json" };
+  const P = "/home/testuser/.config/keel/policy.json";
+  const K = "/home/testuser/.ssh/id_rsa";
+  const runB = (command, env = POL) => run({ tool_name: "Bash", tool_input: { command } }, env);
+
+  // Self-guard: interpreter writes the audit slipped past the shell-verb list.
+  for (const [name, cmd] of [
+    ["ruby IO.write", `ruby -e 'IO.write("${P}","{}")'`],
+    ["python os.replace (atomic rename)", `python3 -c 'import os; os.replace("/tmp/e","${P}")'`],
+    ["node writeFileSync", `node -e "require('fs').writeFileSync('${P}','{}')"`],
+  ]) {
+    test(`self-guard asks: ${name}`, () => assert.ok(isAsk(runB(cmd)), cmd));
+  }
+  test("a shell read of the policy stays free", () => {
+    assert.ok(isAllow(runB(`cat ${P}`)), "cat is cheaply classified as a read");
+  });
+
+  // Key material read through the interpreters the audit walked through — node
+  // especially, keel's own advertised portable floor.
+  for (const [name, cmd] of [
+    ["node readFileSync", `node -e "console.log(require('fs').readFileSync('${K}'))"`],
+    ["ruby File.read", `ruby -e 'puts File.read("${K}")'`],
+    ["perl open", `perl -e 'open(F,"${K}");print<F>'`],
+    ["python pathlib.read_text with a ; in the payload", `python3 -c "import pathlib; pathlib.Path('${K}').read_text()"`],
+  ]) {
+    test(`key read asks: ${name}`, () => assert.ok(isAsk(runB(cmd)), cmd));
+  }
+  test("an interpreter reading a PUBLIC key is left alone", () => {
+    assert.ok(isAllow(runB(`node -e "require('fs').readFileSync('${K}.pub')"`)));
+  });
+
+  // The file-tool tier is airtight for real now: a symlink alias resolves to
+  // the real target before the rule judges it.
+  test("Write via a symlink to a private key is blocked, not laundered", () => {
+    const d = mkdtempSync(join(tmpdir(), "keel-sym-"));
+    mkdirSync(join(d, ".ssh"));
+    writeFileSync(join(d, ".ssh", "id_rsa"), "KEY");
+    symlinkSync(join(d, ".ssh", "id_rsa"), join(d, "alias"));
+    const r = run({ tool_name: "Write", tool_input: { file_path: join(d, "alias") } }, { HOME: d, KEEL_POLICY_FILE: join(d, ".config/keel/policy.json") });
+    rmSync(d, { recursive: true, force: true });
+    assert.equal(r.code, 2, "symlink to a key must resolve and block");
+  });
+
+  test("Write via a symlink to the policy file still prompts", () => {
+    const d = mkdtempSync(join(tmpdir(), "keel-sym2-"));
+    mkdirSync(join(d, ".config", "keel"), { recursive: true });
+    writeFileSync(join(d, ".config", "keel", "policy.json"), "{}");
+    symlinkSync(join(d, ".config", "keel", "policy.json"), join(d, "palias"));
+    const r = run({ tool_name: "Write", tool_input: { file_path: join(d, "palias") } }, { HOME: d, KEEL_POLICY_FILE: join(d, ".config/keel/policy.json") });
+    rmSync(d, { recursive: true, force: true });
+    assert.ok(isAsk(r), "symlink to the policy must resolve and prompt");
   });
 });
