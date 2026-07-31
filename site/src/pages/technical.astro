@@ -38,8 +38,9 @@ import Base from "../layouts/Base.astro";
           <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
           via <code>bash.allow</code> and <code>paths.allow</code>. Private key material
           is zero-access to the file tools by default — and the file-tool check
-          resolves symlinks first, so an alias can't launder a write to a key or the
-          policy past it. Through Bash it's defense in depth: shell reads
+          resolves symlinks and matches hardlinks by inode identity, so neither kind
+          of alias launders a read or write to a key past it (and <code>ln</code> of a
+          key prompts at the Bash tier before one can even be made). Through Bash it's defense in depth: shell reads
           (<code>cat</code>, <code>cp</code>, <code>openssl</code>,
           <code>tar ~/.ssh</code>) and the common interpreters
           (<code>node</code>, <code>python</code>, <code>ruby</code>,

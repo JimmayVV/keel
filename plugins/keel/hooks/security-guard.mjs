@@ -32,10 +32,68 @@
  * Derived from PAI's SecurityValidator (Daniel Miessler's PAI, MIT).
  */
 
-import { readFileSync, appendFileSync, mkdirSync, existsSync, realpathSync } from "node:fs";
+import { readFileSync, appendFileSync, mkdirSync, existsSync, realpathSync, statSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * A hardlink shares an inode with its target and has NO link to resolve, so
+ * canonicalPath (realpathSync) can't see it — a fifth audit hardlinked a key
+ * to a decoy and read it prompt-free. Catch it by identity: if the target is
+ * a multiply-linked file, compare its dev:ino against the crown-jewel key
+ * material. Gated on nlink >= 2, so the overwhelming common case (a normal
+ * single-linked file) pays one stat and returns. The `ln` that MADE the
+ * hardlink is now prompted at the Bash tier too — this is the file-tool
+ * backstop for a link that already exists.
+ */
+function sharesInodeWithKeyMaterial(fp) {
+  let st;
+  try {
+    st = statSync(fp);
+  } catch {
+    return false;
+  }
+  if (!st.isFile() || st.nlink < 2) return false;
+  const id = `${st.dev}:${st.ino}`;
+  const H = homedir();
+  const isSecret = (dir, name) => {
+    if (/\.pub$/.test(name)) return false;
+    if (dir.endsWith("/.gnupg/private-keys-v1.d")) return true;
+    if (dir.endsWith("/.ssh")) return /^id_|\.pem$|\.key$/.test(name);
+    if (dir === H) return name === ".credentials.json";
+    if (dir.endsWith("/.aws")) return name === "credentials";
+    return false;
+  };
+  const scan = (dir, depth) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const e of entries) {
+      const full = join(dir, e.name);
+      if (e.isDirectory() && depth > 0) {
+        if (scan(full, depth - 1)) return true;
+      } else if (e.isFile() && isSecret(dir, e.name)) {
+        try {
+          const s2 = statSync(full);
+          if (`${s2.dev}:${s2.ino}` === id) return true;
+        } catch {
+          /* unreadable — skip */
+        }
+      }
+    }
+    return false;
+  };
+  return (
+    scan(join(H, ".ssh"), 3) ||
+    scan(join(H, ".gnupg", "private-keys-v1.d"), 0) ||
+    scan(join(H, ".aws"), 0) ||
+    scan(H, 0)
+  );
+}
 
 /**
  * Resolve symlinks before a path is judged. A fourth audit demonstrated the
@@ -403,6 +461,11 @@ function checkPath(filePath) {
   const p = policy.paths ?? {};
   const hit = (list) =>
     (list ?? []).some((g) => globToRe(g).test(abs) || globToRe(g).test(real));
+  // Hardlink identity check, folded into the zero-access decision: a decoy
+  // hardlinked to a private key isn't named like one and has no symlink to
+  // follow, but it IS the same file. Only consulted for the key tier, where
+  // exfiltration is the stake.
+  const zeroAccessHit = hit(p.zeroAccess) || sharesInodeWithKeyMaterial(abs);
 
   // The guard's own policy file, wherever KEEL_POLICY_FILE or XDG put it —
   // checked BEFORE the allow list, which must not be able to exempt edits to
@@ -439,7 +502,7 @@ function checkPath(filePath) {
     );
   }
 
-  if (hit(p.zeroAccess)) {
+  if (zeroAccessHit) {
     record("blocked", "zero-access path", abs);
     // This block is also the escalation UI: stderr reaches the model, which
     // relays it — so the message must carry the why and both exits, or the
@@ -595,7 +658,7 @@ if (tool === "Bash") {
     const mentions = [USER_POLICY, canonical]
       .flatMap((p) => (p.startsWith(home) ? [p, "~" + p.slice(home.length)] : [p]));
     const writeShape =
-      /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b|\bsponge\b|writeFileSync|writeFile\b|Bun\.write|\bfs\.write|\.write_text|\bshutil\.(copy|copyfile|move)|\bos\.(replace|rename)|File\.(write|open)|\bIO\.write|open\s*\([^)]*,\s*['"]?[wax])/i;
+      /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b|\bsponge\b|writeFileSync|writeFile\b|Bun\.write|\bfs\.write|\.write_text|\bshutil\.(copy|copyfile|move)|\bos\.(replace|rename)|File\.(write|open)|\bIO\.write|\bed\b[^|;&]*<<|open\s*\([^)]*,\s*['"]?[wax])/i;
     // An interpreter that so much as NAMES the policy path is prompted,
     // write-shape or not — enumerating every language's write idiom is a
     // losing game (the fourth audit slipped `ruby IO.write`, `os.replace`,
@@ -603,7 +666,7 @@ if (tool === "Bash") {
     // scripting one-liner is rare enough that a prompt there is no burden.
     // Reading the policy with a plain shell tool stays free.
     const interpreter =
-      /\b(?:node|deno|bun|python[0-9.]*|ruby|perl|php|ex|vim?|awk|xargs|env|eval|source)\b/i;
+      /\b(?:node|deno|bun|python[0-9.]*|ruby|perl|php|ex|ed|vim?|awk|xargs|env|eval|source)\b/i;
     const mentioned = mentions.some((p) => scanned.includes(p));
     if (mentioned && (writeShape.test(scanned) || interpreter.test(scanned))) {
       record("confirm", "shell write to the guard's own policy", raw);

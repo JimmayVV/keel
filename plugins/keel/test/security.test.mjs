@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, copyFileSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync, mkdirSync, writeFileSync, symlinkSync, linkSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), "..", "hooks", "security-guard.mjs");
@@ -890,5 +890,33 @@ describe("fourth audit: interpreter and symlink bypasses", () => {
     const r = run({ tool_name: "Write", tool_input: { file_path: join(d, "palias") } }, { HOME: d, KEEL_POLICY_FILE: join(d, ".config/keel/policy.json") });
     rmSync(d, { recursive: true, force: true });
     assert.ok(isAsk(r), "symlink to the policy must resolve and prompt");
+  });
+});
+
+describe("fifth audit: hardlink aliases and ln", () => {
+  // A hardlink shares an inode and has no symlink to resolve, so realpathSync
+  // can't see it. The file-tool tier now catches it by identity, and the Bash
+  // tier prompts on the `ln` that would make it.
+  test("Read/Write a private key via a hardlink is blocked by inode identity", () => {
+    const d = mkdtempSync(join(tmpdir(), "keel-hl-"));
+    mkdirSync(join(d, ".ssh"));
+    writeFileSync(join(d, ".ssh", "id_rsa"), "KEY");
+    writeFileSync(join(d, ".ssh", "id_rsa.pub"), "pub");
+    linkSync(join(d, ".ssh", "id_rsa"), join(d, "decoy"));
+    linkSync(join(d, ".ssh", "id_rsa.pub"), join(d, "decoypub"));
+    const at = (tool, f) => run({ tool_name: tool, tool_input: { file_path: f } }, { HOME: d });
+    assert.equal(at("Read", join(d, "decoy")).code, 2, "hardlink read must resolve by inode and block");
+    assert.equal(at("Write", join(d, "decoy")).code, 2, "hardlink write must block too");
+    assert.ok(isAllow(at("Read", join(d, "decoypub"))), "a hardlink to a PUBLIC key is fine");
+    writeFileSync(join(d, "plain.txt"), "hi");
+    assert.ok(isAllow(at("Read", join(d, "plain.txt"))), "a normal single-linked file is untouched");
+    rmSync(d, { recursive: true, force: true });
+  });
+
+  test("`ln` (and install) manufacturing a hardlink to a key prompts", () => {
+    assert.ok(isAsk(bashAtHome("ln ~/.ssh/id_rsa /tmp/decoy")), "ln of a key must prompt");
+    assert.ok(isAsk(bashAtHome("install -m600 ~/.ssh/id_rsa /tmp/x")), "install of a key must prompt");
+    assert.ok(isAllow(bashAtHome("ln ~/.ssh/id_rsa.pub /tmp/p")), "ln of a public key is fine");
+    assert.ok(isAllow(bashAtHome("ln node_modules /tmp/n")), "ordinary ln is untouched");
   });
 });
