@@ -571,3 +571,48 @@ describe("fail modes", () => {
     });
   }
 });
+
+describe("paths.allow — the escape hatch covers path rules too", () => {
+  // Audit finding: bash.allow could exempt any bash rule, but checkPath had no
+  // allow list at all — a shipped path rule could not be exempted, which
+  // contradicts "an escape hatch documented only in the source isn't one".
+  test("an allowed path wins over a zeroAccess rule", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-pallow-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        paths: { zeroAccess: ["~/secret-zone/**"], allow: ["~/secret-zone/ok.txt"] },
+      }),
+    );
+    const w = (file_path) =>
+      run({ tool_name: "Write", tool_input: { file_path } }, { HOME: "/home/testuser", KEEL_POLICY_FILE: file });
+    const denied = w("/home/testuser/secret-zone/nope.txt");
+    const allowed = w("/home/testuser/secret-zone/ok.txt");
+    rmSync(dir, { recursive: true, force: true });
+    assert.equal(denied.code, 2, "sanity: the zeroAccess rule must fire");
+    assert.ok(isAllow(allowed), "paths.allow must exempt, and win outright");
+  });
+});
+
+describe("fail-closed covers every mutating tool", () => {
+  // Audit finding: a malformed policy failed closed for Bash and OPEN for
+  // Edit/Write — silently dropping the ~/.ssh write protection exactly when
+  // the policy is broken. Read stays open: a broken policy must not brick
+  // reading the repo.
+  for (const [toolName, wantBlocked] of [["Write", true], ["Edit", true], ["Read", false]]) {
+    test(`malformed policy: ${toolName} ${wantBlocked ? "blocks" : "stays open"}`, () => {
+      const bare = mkdtempSync(join(tmpdir(), "keel-shape2-"));
+      mkdirSync(join(bare, "hooks"), { recursive: true });
+      mkdirSync(join(bare, "policy"), { recursive: true });
+      copyFileSync(HOOK, join(bare, "hooks", "security-guard.mjs"));
+      writeFileSync(join(bare, "policy", "security.json"), '{"version":"1.0"}');
+      const r = spawnSync(process.execPath, [join(bare, "hooks", "security-guard.mjs")], {
+        input: JSON.stringify({ tool_name: toolName, tool_input: { file_path: "/tmp/x" } }),
+        encoding: "utf-8",
+      });
+      rmSync(bare, { recursive: true, force: true });
+      assert.equal(r.status, wantBlocked ? 2 : 0);
+    });
+  }
+});

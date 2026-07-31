@@ -56,7 +56,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and four skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works) |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works), `setup` (the install ceremony as a conversation) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
@@ -93,14 +93,15 @@ rather than copied — the original scanned the whole command string and blocked
 for writing documentation.
 
 Policy ships inside the plugin, so it cannot drift from the code that reads it, and
-it **fails closed**: an unreadable or invalid policy blocks Bash rather than
-silently allowing everything.
+it **fails closed**: an unreadable or invalid policy blocks every mutating tool —
+Bash, Edit, Write — rather than silently allowing everything. Reads stay open, so a
+broken policy cannot brick the session.
 
 Because the shipped policy lives in the plugin cache — which updates replace
 wholesale — editing it there isn't a real escape hatch. Yours lives at
 `~/.config/keel/policy.json`, survives updates, and can both add rules and
-**exempt** shipped ones via `bash.allow`, which is checked first and wins
-outright. A block tells you that file's path and the shape to write. An escape
+**exempt** shipped ones via `bash.allow` — or `paths.allow` for path rules —
+checked first and winning outright. A block tells you that file's path and the shape to write. An escape
 hatch documented only in the source isn't one. `KEEL_GUARD_OFF=1` still disables
 the guard entirely.
 
@@ -121,8 +122,9 @@ Blocks unwanted attribution trailers in commit messages. Whether you want those 
 history is a preference — but it's a preference a model will forget, because it's one line
 competing with a hundred others. A hook doesn't forget.
 
-Configure with `KEEL_BLOCKED_TRAILERS` (comma-separated). Fails **open** on any internal
-error, and only inspects actual `git commit` invocations, so `git log --grep` still works.
+Configure with `KEEL_BLOCKED_TRAILERS` (comma-separated); `KEEL_TRAILERS_OFF=1` disables
+the guard entirely. Fails **open** on any internal error, and only inspects actual
+`git commit` invocations, so `git log --grep` still works.
 
 ---
 
@@ -150,8 +152,9 @@ It inspects what's already wired, asks only about the gaps — device name,
 memory backend, recommended settings — and drives the CLI's flag form itself.
 Re-runnable any time as a check-up, non-destructive on an existing install,
 and the same conversation on a greenfield machine. Prefer doing it by hand?
-`keel setup --memory-home ~/notes && claude plugin enable keel-memory` is the
-whole of it.
+`keel setup --memory-home ~/notes && claude plugin install keel-memory@keel`,
+plus [`uv`](https://github.com/astral-sh/uv) for the engine and a fresh session
+to pick it up.
 
 ### The fresh-start ceremony (optional)
 
@@ -238,8 +241,9 @@ update` migrates an old symlink the first time it sees one, and never touches a
 file keel didn't write.
 
 `keel` owns no runtime. It configures other people's tools and gets out of the way — which
-means every write is idempotent and surgical. It touches only the `KEEL_*` keys it owns in
-`settings.json`, backs the file up before the first write, and preserves everything else.
+means every write is idempotent and surgical. It touches the `KEEL_*` keys it owns in
+`settings.json` — plus, with your explicit consent, the `permissions` rules `keel settings
+--yes` appends — backs the file up before the first write, and preserves everything else.
 Config files belong to the user; a setup tool that clobbers them is a bug with a nice
 interface.
 

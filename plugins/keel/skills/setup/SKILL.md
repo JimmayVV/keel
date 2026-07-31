@@ -16,10 +16,11 @@ says so, which makes it safe to run any time as a check-up.
 
 ## Absolutes, before anything else
 
-- **Never destructive.** This skill never runs `install.sh`'s reset path,
-  never moves or deletes an existing config, never touches settings keys
-  outside `KEEL_*`. The reset-and-carry-over ceremony is `install.sh`'s job,
-  run by a human on purpose.
+- **Never destructive.** This skill never runs `install.sh`'s reset path and
+  never moves or deletes an existing config. Its writes are the `KEEL_*` keys
+  keel owns, plus — only through `keel settings --yes`, after showing every
+  rule — the `permissions` entries the user approves. The reset-and-carry-over
+  ceremony is `install.sh`'s job, run by a human on purpose.
 - **Existing values are respected.** Something already set is *reported*, not
   overwritten — changing it happens only if the user asks for that change.
 - **Every write is named before it happens.** One line: what command, what it

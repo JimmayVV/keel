@@ -34,8 +34,10 @@ import Base from "../layouts/Base.astro";
           your projects, the recommended safety settings — and runs the commands
           itself. Safe to run again any time as a check-up.</p>
           <pre><code><span class="p">/keel:setup</span></code></pre>
-          <p>Prefer doing it by hand? <code>keel setup --memory-home ~/notes</code> and
-          <code>claude plugin enable keel-memory</code> is the whole of it.</p>
+          <p>Prefer doing it by hand? <code>keel setup --memory-home ~/notes</code>,
+          then <code>claude plugin install keel-memory@keel</code> — the notes engine
+          needs <a href="https://github.com/astral-sh/uv"><code>uv</code></a>, and a
+          fresh session picks it up.</p>
         </div>
       </div>
 
@@ -74,11 +76,15 @@ import Base from "../layouts/Base.astro";
       <table>
         <tr><td>KEEL_GUARD_OFF=1</td><td>Disables the security guard entirely.</td></tr>
         <tr><td>KEEL_ACTIVITY_OFF=1</td><td>Stops activity capture without uninstalling.</td></tr>
+        <tr><td>KEEL_TRAILERS_OFF=1</td><td>Disables the commit-trailer guard.</td></tr>
+        <tr><td>KEEL_INGEST_OFF=1</td><td>Stops stamping web and app content as untrusted.</td></tr>
         <tr><td>~/.config/keel/policy.json</td><td>Your policy — adds rules, or
-        <strong>exempts</strong> any shipped one via <code>bash.allow</code>, which is
-        checked first and wins outright.</td></tr>
-        <tr><td>/plugin uninstall keel@keel</td><td>Everything gone. Settings writes were
-        append-only and backed up; your config was never keel's to keep.</td></tr>
+        <strong>exempts</strong> any shipped one via <code>bash.allow</code> /
+        <code>paths.allow</code>, checked first and winning outright.</td></tr>
+        <tr><td>/plugin uninstall keel@keel</td><td>The software, gone. Your work
+        diary, notes, and backups stay — they're yours, and
+        <a href="https://github.com/JimmayVV/keel/blob/main/docs/UNINSTALL.md">UNINSTALL.md</a>
+        lists every path if you want them gone too.</td></tr>
       </table>
 
       <div class="note"><strong>The fresh-start ceremony</strong> is the one thing that

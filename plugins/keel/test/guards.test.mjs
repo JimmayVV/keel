@@ -126,3 +126,34 @@ describe("commit-trailer-guard", () => {
     assert.equal(r.code, 0);
   });
 });
+
+describe("the trailer guard's off switch", () => {
+  // Added after a cold audit: every other guard had an off switch; the one
+  // guard that blocks with exit 2 did not — emptying KEEL_BLOCKED_TRAILERS
+  // restores the defaults rather than disabling. KEEL_TRAILERS_OFF is the
+  // real exit, and this pins it.
+  test("KEEL_TRAILERS_OFF=1 allows a commit the guard would otherwise block", () => {
+    const payload = {
+      tool_name: "Bash",
+      tool_input: { command: `git commit -m "feat: x\n\n${TRAILER} <a@b.c>"` },
+    };
+    const blocked = run("commit-trailer-guard.mjs", payload);
+    assert.equal(blocked.code, 2, "sanity: must block without the switch");
+    const allowed = run("commit-trailer-guard.mjs", payload, { KEEL_TRAILERS_OFF: "1" });
+    assert.equal(allowed.code, 0, "KEEL_TRAILERS_OFF must be honoured");
+  });
+});
+
+describe("the ingest boundary's off switch", () => {
+  test("KEEL_INGEST_OFF=1 passes web content through unwrapped", () => {
+    const payload = {
+      tool_name: "WebFetch",
+      tool_input: { url: "https://example.test" },
+      tool_response: "hello",
+    };
+    const wrapped = run("untrusted-content.mjs", payload);
+    assert.ok(wrapped.json?.hookSpecificOutput?.additionalContext, "sanity: wraps by default");
+    const off = run("untrusted-content.mjs", payload, { KEEL_INGEST_OFF: "1" });
+    assert.equal(off.json?.hookSpecificOutput, undefined, "KEEL_INGEST_OFF must be honoured");
+  });
+});

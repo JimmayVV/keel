@@ -17,6 +17,13 @@
  * cover the common agent-attribution trailers. Matching is case-insensitive and
  * applies only to `git commit` invocations.
  *
+ * KEEL_TRAILERS_OFF=1 disables this guard entirely. It exists because keel's
+ * own principle — a layer you can't turn off is a layer you'll eventually
+ * resent — applied to every guard except this one: setting the trailer list
+ * empty restores the defaults, so before this switch, the only exit was
+ * disabling the whole plugin. A cold audit caught the site claiming an
+ * off-switch this guard didn't have; now it has one.
+ *
  * Fails OPEN on any internal error: a guard that breaks committing is a guard
  * that gets uninstalled.
  */
@@ -29,6 +36,8 @@ function allow() {
   process.stdout.write(JSON.stringify({ continue: true }));
   process.exit(0);
 }
+
+if (process.env.KEEL_TRAILERS_OFF === "1") allow();
 
 let input;
 try {
@@ -59,6 +68,6 @@ if (!hit) allow();
 process.stderr.write(
   `keel: refusing this commit — the message contains a blocked trailer: "${hit}"\n` +
     `Rewrite the commit message without it, then retry.\n` +
-    `(Configure via KEEL_BLOCKED_TRAILERS, or disable the keel plugin.)\n`,
+    `(Configure via KEEL_BLOCKED_TRAILERS, or disable this guard with KEEL_TRAILERS_OFF=1.)\n`,
 );
 process.exit(2);

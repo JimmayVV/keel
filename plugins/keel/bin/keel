@@ -123,6 +123,8 @@ function effectiveEnv() {
  * up once per run before the first write: this is the user's config, and keel is
  * a guest in it.
  */
+const BACKED_UP = new Set(); // per-run: the backup must capture PRE-run state
+
 function writeOwnedEnv(patch) {
   const settings = readSettings();
   const before = JSON.stringify(settings);
@@ -136,9 +138,12 @@ function writeOwnedEnv(patch) {
 
   if (JSON.stringify(settings) === before) return false;
 
-  if (existsSync(SETTINGS)) {
-    const backup = `${SETTINGS}.keel-backup`;
-    copyFileSync(SETTINGS, backup);
+  if (existsSync(SETTINGS) && !BACKED_UP.has(SETTINGS)) {
+    // Once per run: cmdSetup writes twice (device, then memory home), and
+    // backing up before EVERY write meant the second backup captured keel's
+    // own first write — the genuine pre-run state was lost. Audit finding.
+    copyFileSync(SETTINGS, `${SETTINGS}.keel-backup`);
+    BACKED_UP.add(SETTINGS);
   }
   mkdirSync(dirname(SETTINGS), { recursive: true });
   writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
@@ -167,7 +172,10 @@ function writeLocalEnv(patch) {
 
   if (JSON.stringify(settings) === before) return false;
 
-  if (existsSync(LOCAL_SETTINGS)) copyFileSync(LOCAL_SETTINGS, `${LOCAL_SETTINGS}.keel-backup`);
+  if (existsSync(LOCAL_SETTINGS) && !BACKED_UP.has(LOCAL_SETTINGS)) {
+    copyFileSync(LOCAL_SETTINGS, `${LOCAL_SETTINGS}.keel-backup`);
+    BACKED_UP.add(LOCAL_SETTINGS);
+  }
   mkdirSync(dirname(LOCAL_SETTINGS), { recursive: true });
   writeFileSync(LOCAL_SETTINGS, JSON.stringify(settings, null, 2) + "\n");
   return true;
@@ -224,14 +232,17 @@ function basicMemoryMappingDrift(dir) {
     encoding: "utf-8",
     timeout: 15000,
   });
-  if (r.status !== 0 || !r.stdout) return null;
+  // "Couldn't check" is not "checked fine". A slow or broken CLI used to yield
+  // the same green ✔ as a verified mapping — fail-open stays (exit 0, not a
+  // problem), but the display now says unverified instead of lying.
+  if (r.status !== 0 || !r.stdout) return { unverified: "basic-memory CLI unreachable" };
   let projects;
   try {
     projects = JSON.parse(r.stdout).projects;
   } catch {
-    return null;
+    return { unverified: "unparseable project list" };
   }
-  if (!Array.isArray(projects)) return null;
+  if (!Array.isArray(projects)) return { unverified: "unexpected project-list shape" };
   const expand = (p) => resolve(String(p ?? "").replace(/^~(?=$|\/)/, homedir()));
   if (projects.length === 0)
     return `Basic Memory has no projects at all — notes have nowhere to land\n      fix: uvx basic-memory project add main '${dir}'`;
@@ -757,14 +768,16 @@ function cmdDoctor() {
       problems++;
       continue;
     }
-    const drift = a.verify?.(val);
+    const raw = a.verify?.(val);
+    const unverified = raw && typeof raw === "object" ? raw.unverified : null;
+    const drift = typeof raw === "string" ? raw : null;
     if (drift) {
       console.log(`  ${c.red("✖")} ${a.title} — ${drift}`);
       problems++;
       continue;
     }
-    // Configured and prerequisites present — but the env var only matters if
-    // the bridge plugin that reads it is installed and enabled.
+    // "Couldn't verify" softens the final display only — it must never skip
+    // the plugin-state checks below, which catch real problems on their own.
     const ps = a.plugin ? pluginState(a.plugin) : null;
     if (ps && !ps.installed) {
       console.log(`  ${c.red("✖")} ${a.title} — configured, but the ${a.plugin} plugin is not installed\n      fix: claude plugin install ${a.plugin}@keel`);
@@ -773,8 +786,14 @@ function cmdDoctor() {
       console.log(`  ${c.red("✖")} ${a.title} — configured, but the ${a.plugin} plugin is disabled\n      fix: claude plugin enable ${a.plugin}@keel`);
       problems++;
     } else {
-      const note = ps ? "" : c.dim("  (plugin state unknown — claude CLI unreachable)");
-      console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}${note}`);
+      const caveats = [];
+      if (unverified) caveats.push(`mapping unverified (${unverified})`);
+      if (!ps) caveats.push("plugin state unknown — claude CLI unreachable");
+      if (caveats.length) {
+        console.log(`  ${c.dim("○")} ${a.title} ${c.dim(val)} — ${c.dim(caveats.join("; "))}`);
+      } else {
+        console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}`);
+      }
     }
   }
 
@@ -1365,6 +1384,9 @@ function applyFlagRepair(rep, dry) {
     const d = JSON.parse(readFileSync(rep.file, "utf-8"));
     for (const k of rep.keys) delete d[k];
     const mode = statSync(rep.file).mode & 0o777;
+    // The only keel write that took no backup, per a cold audit — and it is
+    // the one against a file keel explicitly does not own.
+    copyFileSync(rep.file, `${rep.file}.keel-backup`);
     const tmp = `${rep.file}.keel-tmp`;
     writeFileSync(tmp, JSON.stringify(d, null, 2), { mode });
     renameSync(tmp, rep.file);

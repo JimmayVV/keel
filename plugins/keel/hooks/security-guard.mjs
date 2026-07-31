@@ -91,7 +91,7 @@ let policy;
 try {
   policy = JSON.parse(readFileSync(join(HERE, "..", "policy", "security.json"), "utf-8"));
 } catch (e) {
-  if (tool === "Bash") {
+  if (tool !== "Read") {
     block(
       "security policy could not be loaded — failing closed",
       `Expected: ${resolve(HERE, "..", "policy", "security.json")}\n` +
@@ -105,9 +105,13 @@ try {
 // A file that parses is not the same as a policy that means anything. A policy
 // missing its `bash` section permits every command the guard exists to stop, and
 // a null one throws inside checkPath. Damaged shape gets the same treatment as a
-// damaged file: fail closed for Bash, which is the tier that can destroy things.
+// damaged file: fail closed for everything that can mutate — Bash, Edit, Write.
+// Read stays open on purpose: a broken policy also silently drops the ~/.ssh
+// write protection, which is why Edit/Write joined Bash here, but blocking
+// reads would brick the session outright and teach the user to disable the
+// guard rather than fix the file.
 if (!policy || typeof policy !== "object" || !policy.bash || typeof policy.bash !== "object") {
-  if (tool === "Bash") {
+  if (tool !== "Read") {
     block(
       "security policy is malformed — failing closed",
       `Expected an object with a "bash" section.\n` +
@@ -147,7 +151,7 @@ if (existsSync(USER_POLICY)) {
     overlay = JSON.parse(readFileSync(USER_POLICY, "utf-8"));
     if (!overlay || typeof overlay !== "object" || Array.isArray(overlay)) throw new Error("not an object");
   } catch (e) {
-    if (tool === "Bash") {
+    if (tool !== "Read") {
       block(
         "your policy overlay could not be read — failing closed",
         `File: ${USER_POLICY}\nError: ${String(e?.message ?? e)}\n` +
@@ -170,10 +174,15 @@ if (overlay) {
       blocked: merge("bash", "blocked"),
       confirm: merge("bash", "confirm"),
       alert: merge("bash", "alert"),
-      allow: overlay.bash?.allow ?? [],
+      // Merged like every other section. An earlier version REPLACED the allow
+      // list with the overlay's — inert while the shipped policy carried no
+      // allow entries, and a silent rule-drop the day it did. A cold audit
+      // caught it before the day came.
+      allow: merge("bash", "allow"),
     },
     paths: {
       ...(policy.paths ?? {}),
+      allow: merge("paths", "allow"),
       zeroAccess: merge("paths", "zeroAccess"),
       readOnly: merge("paths", "readOnly"),
       confirmWrite: merge("paths", "confirmWrite"),
@@ -366,6 +375,11 @@ function checkPath(filePath) {
   const abs = resolve(expandHome(filePath));
   const p = policy.paths ?? {};
   const hit = (list) => (list ?? []).some((g) => globToRe(g).test(abs));
+
+  // The same escape hatch bash rules have, for the same reason: an exemption
+  // that only covers half the rule set isn't one. paths.allow is checked first
+  // and wins outright.
+  if (hit(p.allow)) return;
 
   if (hit(p.zeroAccess)) {
     record("blocked", "zero-access path", abs);

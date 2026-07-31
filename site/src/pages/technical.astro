@@ -21,7 +21,9 @@ import Base from "../layouts/Base.astro";
           <h3 id="ingest">ingest boundary</h3>
           <p>Every <code>WebFetch</code>, <code>WebSearch</code>, and MCP result is
           wrapped in an envelope marking it as untrusted <strong>data, never
-          instructions</strong> — closing the indirect prompt-injection path. It also
+          instructions</strong> — raising the cost of the indirect prompt-injection
+          path (it is advisory context, not enforcement — and content fetched through
+          plain <code>curl</code> in Bash is not covered). It also
           flags zero-width characters and bidirectional overrides. Strictly read-only:
           it never blocks a call, never mutates a result.</p>
         </div>
@@ -31,13 +33,16 @@ import Base from "../layouts/Base.astro";
           emits the documented <code>permissionDecision: "ask"</code> before
           exfiltration-shaped commands. Distinguishes data from code in a heredoc — a
           Dockerfile mentioning <code>rm -rf</code> is text; the same text piped into
-          <code>bash</code> is code. Fails closed on a broken policy; your policy at
-          <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones.</p>
+          <code>bash</code> is code. Fails closed on a broken policy for every mutating
+          tool (Bash, Edit, Write — reads stay open); your policy at
+          <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
+          via <code>bash.allow</code> and <code>paths.allow</code>.</p>
         </div>
         <div class="card">
           <h3 id="trailers">commit hygiene</h3>
           <p>Blocks unwanted attribution trailers in commit messages
-          (<code>KEEL_BLOCKED_TRAILERS</code>). Fails open on any internal error, and
+          (<code>KEEL_BLOCKED_TRAILERS</code>; off switch <code>KEEL_TRAILERS_OFF=1</code>).
+          Fails open on any internal error, and
           only inspects actual <code>git commit</code> invocations — <code>git log
           --grep</code> still works.</p>
         </div>
@@ -62,7 +67,9 @@ import Base from "../layouts/Base.astro";
           <h3 id="cli">the cli</h3>
           <p><code>keel status · log · doctor · setup · settings · update · migrate ·
           link</code> — read-mostly, flags-first, idempotent writes only to
-          <code>KEEL_*</code> keys it owns, with a backup before the first write. It
+          <code>KEEL_*</code> keys it owns — plus, with your explicit consent, the
+          <code>permissions</code> rules <code>keel settings --yes</code> appends —
+          with a backup of the pre-run state before the first write. It
           lives on the Bash tool's PATH rather than your shell's; in practice Claude
           runs it for you. <code>keel update</code> verifies by commit SHA rather than
           trusting version strings.</p>
