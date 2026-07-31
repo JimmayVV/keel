@@ -36,11 +36,15 @@ import Base from "../layouts/Base.astro";
           <code>bash</code> is code. Fails closed on a broken policy for every mutating
           tool (Bash, Edit, Write — reads stay open); your policy at
           <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
-          via <code>bash.allow</code> and <code>paths.allow</code>. Private key material
-          is zero-access to the file tools by default — and the file-tool check
-          resolves symlinks and matches hardlinks by inode identity, so neither kind
-          of alias launders a read or write to a key past it (and <code>ln</code> of a
-          key prompts at the Bash tier before one can even be made). Through Bash it's defense in depth: shell reads
+          via <code>bash.allow</code> and <code>paths.allow</code>.
+          Conventionally-named private key material (<code>id_*</code>,
+          <code>*.pem</code>, <code>*.key</code>, <code>~/.aws/credentials</code>) is
+          zero-access to the file tools by default; a key with a non-standard name
+          (a bare <code>deploykey</code>) needs a line in <code>paths.zeroAccess</code>
+          to join it. For what is covered, the file-tool check resolves symlinks and
+          matches hardlinks by inode identity, so neither kind of alias launders a read
+          or write to a key past it (and <code>ln</code> of a key prompts at the Bash
+          tier before one can even be made). Through Bash it's defense in depth: shell reads
           (<code>cat</code>, <code>cp</code>, <code>openssl</code>,
           <code>tar ~/.ssh</code>) and the common interpreters
           (<code>node</code>, <code>python</code>, <code>ruby</code>,
