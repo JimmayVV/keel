@@ -244,13 +244,15 @@ function basicMemoryMappingDrift(dir) {
   }
   if (!Array.isArray(projects)) return { unverified: "unexpected project-list shape" };
   const expand = (p) => resolve(String(p ?? "").replace(/^~(?=$|\/)/, homedir()));
+  // Register under "keel", never "main": BM auto-seeds a phantom "main" into
+  // config with no registry row, and `project add main` dead-ends on it.
   if (projects.length === 0)
-    return `Basic Memory has no projects at all — notes have nowhere to land\n      fix: uvx basic-memory project add main '${dir}'`;
+    return `Basic Memory has no projects registered — notes have nowhere to land\n      fix: uvx basic-memory project add keel '${dir}' && uvx basic-memory project default keel`;
   if (projects.some((p) => expand(p.local_path) === expand(dir))) return null;
   const elsewhere = projects.map((p) => String(p.local_path ?? "?")).join(", ");
   return (
     `no Basic Memory project maps to this directory — notes are landing at: ${elsewhere}` +
-    `\n      fix: uvx basic-memory project move ${projects[0].name} '${dir}'`
+    `\n      fix: uvx basic-memory project add keel '${dir}' && uvx basic-memory project default keel`
   );
 }
 
@@ -282,8 +284,25 @@ const ADAPTERS = {
         ? basicMemoryMappingDrift(v)
         : `notes directory does not exist: ${v}\n      fix: mkdir -p '${v}'`,
     postSetup: (v) => {
-      mkdirSync(v.replace(/^~/, homedir()), { recursive: true });
-      return `notes directory ready at ${v}`;
+      const dir = v.replace(/^~/, homedir());
+      mkdirSync(dir, { recursive: true });
+      // The mkdir and the env var are not enough — verified against Basic
+      // Memory 0.22. It keeps an operational project registry (a sqlite DB)
+      // separate from config.json, and the MCP server reads the registry;
+      // BASIC_MEMORY_HOME only seeds config, which the server ignores for
+      // project selection. Worse, BM auto-seeds a phantom "main" into config
+      // with no registry row, so `project add main` dead-ends on "already
+      // exists" while every note write fails "no projects set up". The
+      // documented registration (`project add <name> <dir>`) under a name
+      // that DODGES the phantom is what actually produces a working store.
+      if (!have("uvx")) return `notes dir created at ${v} — install uv, then re-run setup to register the project`;
+      const add = spawnSync("uvx", ["basic-memory", "project", "add", "keel", dir], { encoding: "utf-8", timeout: 30000 });
+      spawnSync("uvx", ["basic-memory", "project", "default", "keel"], { encoding: "utf-8", timeout: 20000 });
+      const out = `${add.stdout ?? ""}${add.stderr ?? ""}`;
+      const registered = /added successfully/i.test(out) || /already exists/i.test(out);
+      return registered
+        ? `notes ready at ${v} · registered as Basic Memory project "keel"`
+        : `notes dir created, but registration failed — run: uvx basic-memory project add keel '${dir}' && uvx basic-memory project default keel`;
     },
   },
   reflect: {

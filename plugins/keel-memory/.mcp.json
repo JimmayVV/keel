@@ -2,8 +2,7 @@
   "mcpServers": {
     "basic-memory": {
       "command": "uvx",
-      "args": ["basic-memory", "mcp"],
-      "env": { "BASIC_MEMORY_HOME": "${KEEL_MEMORY_HOME}" }
+      "args": ["basic-memory", "mcp"]
     }
   }
 }

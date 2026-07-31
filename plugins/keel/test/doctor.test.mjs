@@ -378,7 +378,7 @@ describe("doctor checks the adapter's project mapping, not just the directory", 
     const r = doctor(w);
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stdout, /notes are landing at/);
-    assert.match(r.stdout, /basic-memory project move main/);
+    assert.match(r.stdout, /basic-memory project add keel/);
     rmSync(w.root, { recursive: true, force: true });
   });
 
@@ -387,7 +387,7 @@ describe("doctor checks the adapter's project mapping, not just the directory", 
     uvxSays(w, JSON.stringify({ projects: [] }));
     const r = doctor(w);
     assert.equal(r.status, 1, r.stdout);
-    assert.match(r.stdout, /no projects at all/);
+    assert.match(r.stdout, /no projects registered/);
     rmSync(w.root, { recursive: true, force: true });
   });
 

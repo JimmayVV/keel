@@ -13,7 +13,7 @@ bulk — a minimal customization of the stock tool that lets your own work compo
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.
 
-> **Status:** v0.5, personal tool built in the open. Issues and PRs welcome and may be
+> **Status:** v0.6, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
 
 ---
@@ -57,7 +57,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works), `setup` (the install ceremony as a conversation) |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and six skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
