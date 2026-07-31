@@ -118,6 +118,18 @@
       {
         "pattern": "\\b(cat|less|more|head|tail|bat|strings|xxd|od|cp|dd|openssl|grep|awk)\\b[^|>;&]*(\\.aws/credentials|\\.credentials\\.json|private-keys-v1\\.d)",
         "reason": "Renders or copies credential material into the transcript, which is sent to the model provider. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
+      },
+      {
+        "pattern": "\\b(tar|zip|7z|rsync|scp|sftp)\\b[^|;&]*\\.ssh(/|\\b)",
+        "reason": "Archives or copies the .ssh directory \u2014 that ships private keys somewhere. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
+      },
+      {
+        "pattern": "open\\s*\\(\\s*['\"][^'\"]*\\.ssh/([\\w.-]+/)*id_[^'\"]*?(?<!\\.pub)['\"]",
+        "reason": "An interpreter is reading private key material into the transcript, which is sent to the model provider \u2014 the only undo is rotation. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
+      },
+      {
+        "pattern": "open\\s*\\(\\s*['\"][^'\"]*(\\.aws/credentials|\\.credentials\\.json)['\"]",
+        "reason": "An interpreter is reading credential material into the transcript. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
       }
     ],
     "alert": [

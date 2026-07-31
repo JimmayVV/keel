@@ -19,8 +19,8 @@ import Base from "../layouts/Base.astro";
       <div class="grid cols3">
         <div class="card">
           <h3 id="ingest">ingest boundary</h3>
-          <p>Every <code>WebFetch</code>, <code>WebSearch</code>, and MCP result is
-          wrapped in an envelope marking it as untrusted <strong>data, never
+          <p>Every <code>WebFetch</code>, <code>WebSearch</code>, and MCP result gets a
+          spotlight appended after it marking it as untrusted <strong>data, never
           instructions</strong> — raising the cost of the indirect prompt-injection
           path (it is advisory context, not enforcement — and content fetched through
           plain <code>curl</code> in Bash is not covered). It also
@@ -37,15 +37,19 @@ import Base from "../layouts/Base.astro";
           tool (Bash, Edit, Write — reads stay open); your policy at
           <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
           via <code>bash.allow</code> and <code>paths.allow</code>. Private key material
-          is zero-access to the file tools by default, with the obvious shell reads
-          and copies (<code>cat</code>, <code>cp</code>, <code>xxd</code>,
-          <code>openssl</code>…) prompting — pair with <code>keel settings</code>'s
-          native denies for depth. The block message documents the demotion to
-          ask-mode (<code>paths.confirmRead</code>), and editing the policy file
-          prompts in every tier — file tools at whatever path
-          <code>KEEL_POLICY_FILE</code> names, and the common shell write shapes —
-          with a confirmation the overlay cannot exempt, because the overlay is the
-          thing being edited.</p>
+          is zero-access to the file tools by default. Shell and interpreter reads
+          that render it into the transcript — <code>cat</code>, <code>cp</code>,
+          <code>openssl</code>, <code>tar ~/.ssh</code>, <code>python -c
+          "open(key)"</code> — prompt; pair with <code>keel settings</code>'s native
+          denies for defense in depth. The block message documents the demotion to
+          ask-mode (<code>paths.confirmRead</code>). Editing the policy file prompts
+          across tiers: the file tools at whatever path <code>KEEL_POLICY_FILE</code>
+          names, and shell or interpreter writes to it (a redirect,
+          <code>sed -i</code>, or a <code>node -e</code> that writes it) — checked
+          before the overlay's own allow-list, so an allow-everything overlay cannot
+          exempt its own rewrite. A variable-indirected path can still slip the shell
+          check; the file-tool tier is airtight regardless, and
+          <code>KEEL_GUARD_OFF=1</code> is the honest total switch.</p>
         </div>
         <div class="card">
           <h3 id="trailers">commit hygiene</h3>

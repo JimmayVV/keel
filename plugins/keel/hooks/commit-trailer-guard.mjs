@@ -50,12 +50,18 @@ if (String(input?.tool_name ?? "") !== "Bash") allow();
 
 const command = String(input?.tool_input?.command ?? "");
 
-// A trailer inside a heredoc redirected to a file is DATA — a script that
+// A trailer inside a heredoc redirected to a FILE is DATA — a script that
 // merely contains `git commit -m "<trailer>"` as text is not committing it.
-// A cold audit caught this guard blocking its own probe scripts; the sibling
-// security guard had the data/code distinction, this one didn't. Stripping
-// all heredoc bodies is a fail-open bias, which is this guard's stated mode.
-const stripped = command.replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?\n\s*\2(?=\s|$)/g, " <<HEREDOC_DATA");
+// But a heredoc piped into an INTERPRETER (`sh <<EOF … git commit … EOF`) is
+// CODE and does commit. A third audit noted the first cut stripped both; the
+// sibling security guard draws this line correctly, so this one now does too:
+// strip a heredoc body only when its introducing line carries a `>`/`tee`
+// file target. No redirect → treat as code, still scanned.
+const stripped = command.replace(
+  /([^\n]*)<<-?\s*(['"]?)(\w+)\2([\s\S]*?\n\s*)\3(?=\s|$)/g,
+  (m, intro, _q, _tag, body) =>
+    /(>|>>|\btee\b)/.test(intro) ? intro + " <<HEREDOC_DATA" : m,
+);
 
 // Only inspect actual commit invocations. `git log --grep=...` may mention a
 // trailer without creating one. Flags between `git` and `commit` may carry a

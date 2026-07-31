@@ -784,3 +784,51 @@ describe("key material: the verbs and nesting the audit walked through", () => {
     assert.ok(isAllow(bashAtHome("cat ~/.ssh/keys/id_ed25519.pub")));
   });
 });
+
+
+describe("interpreter bypass of the policy self-guard (third audit)", () => {
+  const POL = { HOME: "/home/testuser", KEEL_POLICY_FILE: "/home/testuser/.config/keel/policy.json" };
+  const P = "/home/testuser/.config/keel/policy.json";
+
+  for (const [name, cmd] of [
+    ["node fs.writeFileSync", `node -e "require('fs').writeFileSync('${P}','{}')"`],
+    ["python open(...,'w')", `python3 -c "open('${P}','w').write('{}')"`],
+    ["python shutil.copy", `python3 -c "import shutil; shutil.copy('/tmp/e','${P}')"`],
+    ["sponge", `cat /tmp/e | sponge ${P}`],
+  ]) {
+    test(`${name} into the policy file asks — no silent seatbelt removal`, () => {
+      const r = run({ tool_name: "Bash", tool_input: { command: cmd } }, POL);
+      assert.ok(isAsk(r), `the audit's proven bypass must prompt: ${cmd}`);
+    });
+  }
+
+  test("an interpreter merely READING the policy stays free", () => {
+    const r = run({ tool_name: "Bash", tool_input: { command: `python3 -c "print(open('${P}').read())"` } }, POL);
+    assert.ok(isAllow(r), "reading the policy is not writing it");
+  });
+
+  test("even an allow-everything overlay cannot exempt an interpreter rewrite of itself", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-interp-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(file, JSON.stringify({ bash: { allow: [{ pattern: ".*", reason: "x" }] } }));
+    const r = run(
+      { tool_name: "Bash", tool_input: { command: `node -e "require('fs').writeFileSync('${file}','{}')"` } },
+      { HOME: "/home/testuser", KEEL_POLICY_FILE: file },
+    );
+    rmSync(dir, { recursive: true, force: true });
+    assert.ok(isAsk(r), "self-guard runs before the allow-list, on the unwrapped command");
+  });
+});
+
+describe("key material via interpreter and archiver (third audit)", () => {
+  for (const cmd of [
+    "python3 -c \"print(open('/home/testuser/.ssh/id_rsa').read())\"",
+    "tar czf /tmp/k.tgz ~/.ssh",
+    "zip -r /tmp/k.zip ~/.ssh",
+  ]) {
+    test(`asks: ${cmd.slice(0, 40)}`, () => assert.ok(isAsk(bashAtHome(cmd)), cmd));
+  }
+  test("an interpreter reading a PUBLIC key is left alone", () => {
+    assert.ok(isAllow(bashAtHome("python3 -c \"print(open('/home/testuser/.ssh/id_rsa.pub').read())\"")));
+  });
+});

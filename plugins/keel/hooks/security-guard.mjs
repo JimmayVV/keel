@@ -547,19 +547,27 @@ if (tool === "Bash") {
    * An escape hatch that can exempt edits to itself is not an escape hatch;
    * it is a hole. KEEL_GUARD_OFF=1 remains the honest total switch.
    *
-   * Detection is path-mention + write-shape. A command that merely READS the
-   * policy stays free; one that redirects, tee's, sed -i's, moves, copies
-   * onto, truncates, links, or removes it gets a reasoned prompt. Exotic
-   * write forms can evade a regex — this raises the cost, the message says
-   * so, and the file-tool side is airtight via checkPath.
+   * Detection is path-mention + write-shape, run against the INTERPRETER-
+   * UNWRAPPED command (`scanned`), not the raw string. A third audit proved
+   * why that matters: `node -e "fs.writeFileSync(POLICY, allowEverything)"`
+   * mentions the path and writes it, but the first cut of this check matched
+   * only shell verbs against `raw`, so the interpreter one-liner — the exact
+   * indirect-injection payload the rationale above names — walked straight
+   * through and disabled every downstream rule. writeShape now covers the
+   * interpreter write idioms too. A command that merely READS the policy stays
+   * free; one that writes it, by shell redirect or program call, prompts.
+   * Variable-indirected paths (`D=…; > $D/policy.json`) still evade a regex —
+   * that is the residual cost the message names, and the file-tool side is
+   * airtight via checkPath regardless.
    */
   {
     const canonical = resolve(expandHome(USER_POLICY));
     const home = homedir();
     const mentions = [USER_POLICY, canonical]
       .flatMap((p) => (p.startsWith(home) ? [p, "~" + p.slice(home.length)] : [p]));
-    const writeShape = /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b)/;
-    if (mentions.some((p) => raw.includes(p)) && writeShape.test(raw)) {
+    const writeShape =
+      /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b|\bsponge\b|writeFileSync|writeFile\b|Bun\.write|\bfs\.write|\.write_text|shutil\.(copy|copyfile|move)|File\.(write|open)|open\s*\([^)]*,\s*['"]?[wax])/i;
+    if (mentions.some((p) => scanned.includes(p)) && writeShape.test(scanned)) {
       record("confirm", "shell write to the guard's own policy", raw);
       ask(
         `[keel] This command writes to keel's security policy:\n\n  ${canonical}\n\n` +

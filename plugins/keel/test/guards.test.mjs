@@ -178,3 +178,18 @@ describe("trailer guard: the audit's two escapes", () => {
     assert.equal(r.code, 0, "writing a script that mentions a trailer is not committing one");
   });
 });
+
+
+describe("trailer guard: heredoc data vs code (third audit)", () => {
+  test("a heredoc piped into an interpreter is CODE — a committed trailer is caught", () => {
+    const body = ["sh <<'EOF'", `git commit -m "x`, "", `${TRAILER} <a@b>"`, "EOF"].join("\n");
+    const r = run("commit-trailer-guard.mjs", { tool_name: "Bash", tool_input: { command: body } });
+    assert.equal(r.code, 2, "interpreter-piped heredoc executes; the trailer must be caught");
+  });
+
+  test("a heredoc redirected to a FILE is DATA — still allowed", () => {
+    const body = ["cat > /tmp/demo.sh <<'SCRIPT'", `git commit -m "x`, "", `${TRAILER} <a@b>"`, "SCRIPT"].join("\n");
+    const r = run("commit-trailer-guard.mjs", { tool_name: "Bash", tool_input: { command: body } });
+    assert.equal(r.code, 0, "writing a script that mentions a trailer is not committing one");
+  });
+});
