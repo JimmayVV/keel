@@ -150,3 +150,21 @@ test("claims the audit proved false stay dead", () => {
     }
   }
 });
+
+// The re-audit found "v0.4" alive on the site while everything else said 0.5 —
+// the version test checked the README and manifests but not the pages. Same
+// disease, wider net, again.
+test("no site page carries a stale version token", () => {
+  const plugin = JSON.parse(
+    readFileSync(join(root, "plugins", "keel", ".claude-plugin", "plugin.json"), "utf8"),
+  );
+  const [major, minor] = plugin.version.split(".");
+  const want = `v${major}.${minor}`;
+  const pagesDir = join(root, "site", "src", "pages");
+  for (const f of readdirSync(pagesDir)) {
+    const text = readFileSync(join(pagesDir, f), "utf8");
+    for (const [tok] of text.matchAll(/\bv\d+\.\d+\b/g)) {
+      assert.equal(tok, want, `site/src/pages/${f} says ${tok}; the plugin is ${want}`);
+    }
+  }
+});

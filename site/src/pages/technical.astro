@@ -37,9 +37,15 @@ import Base from "../layouts/Base.astro";
           tool (Bash, Edit, Write — reads stay open); your policy at
           <code>~/.config/keel/policy.json</code> can add rules or exempt shipped ones
           via <code>bash.allow</code> and <code>paths.allow</code>. Private key material
-          is zero-access by default; the block message documents the demotion to
-          ask-mode (<code>paths.confirmRead</code>), and editing the policy file itself
-          prompts — the guard guards its own demotion.</p>
+          is zero-access to the file tools by default, with the obvious shell reads
+          and copies (<code>cat</code>, <code>cp</code>, <code>xxd</code>,
+          <code>openssl</code>…) prompting — pair with <code>keel settings</code>'s
+          native denies for depth. The block message documents the demotion to
+          ask-mode (<code>paths.confirmRead</code>), and editing the policy file
+          prompts in every tier — file tools at whatever path
+          <code>KEEL_POLICY_FILE</code> names, and the common shell write shapes —
+          with a confirmation the overlay cannot exempt, because the overlay is the
+          thing being edited.</p>
         </div>
         <div class="card">
           <h3 id="trailers">commit hygiene</h3>

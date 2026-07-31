@@ -7,7 +7,8 @@ your sessions steady and your setup on course.**
 
 Quick to stand up, just as quick to discard. Everything it adds rides on surfaces
 Anthropic documents: guards at the ingest boundary, commit hygiene, an activity log,
-and wiring for a memory backend your machines can share. The point is leverage, not
+and wiring for a notes backend that stays yours — plain files, synced however you
+choose. The point is leverage, not
 bulk — a minimal customization of the stock tool that lets your own work compound into
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.

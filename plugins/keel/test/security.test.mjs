@@ -478,7 +478,7 @@ describe("noDelete: deleting a protected path", () => {
     ["a same-named directory elsewhere", "rm -rf /tmp/.ssh/id_rsa"],
     ["an unrelated file under home", "rm -rf ~/projects/old"],
     ["a neighbour of a protected file", "rm ~/.claude/settings.local.json"],
-    ["copying a key is not deleting it", "cp ~/.ssh/id_rsa /tmp/k"],
+
     ["a command that merely mentions rm", "echo rm ~/.ssh/id_rsa"],
     ["node_modules, the thing people actually delete", "rm -rf node_modules"],
   ]) {
@@ -487,10 +487,13 @@ describe("noDelete: deleting a protected path", () => {
     });
   }
 
-  // Reading a key is still not DELETING it — noDelete stays out of the way —
-  // but it is no longer invisible either: the transcript-sink rule asks.
+  // Reading or copying a key is still not DELETING it — noDelete stays out of
+  // the way — but neither is invisible any more: the transcript/egress rules ask.
   test("reading a key is not deleting it — it asks, and nothing blocks it", () => {
     assert.ok(isAsk(bashAtHome("cat ~/.ssh/id_rsa")), "confirm, not block, not silence");
+  });
+  test("copying a key is not deleting it — it asks too", () => {
+    assert.ok(isAsk(bashAtHome("cp ~/.ssh/id_rsa /tmp/k")), "cp is egress with extra steps");
   });
 
   test("prose about deleting a key is not deleting a key", () => {
@@ -706,5 +709,78 @@ describe("bash side door: rendering key material into the transcript", () => {
 
   test("aws credentials via head is caught too", () => {
     assert.ok(isAsk(bashAtHome("head -3 ~/.aws/credentials")));
+  });
+});
+
+
+/**
+ * The guard guards its own demotion — for real this time. A cold audit proved
+ * `echo "{}" > ~/.config/keel/policy.json` sailed through Bash with no prompt
+ * while the site claimed self-guarding; and the confirmWrite glob hardcoded
+ * the default path, so KEEL_POLICY_FILE/XDG machines had no file-tool guard
+ * either. Both closed; both pinned. The confirmation must not be exemptable
+ * by the overlay, because the overlay is the thing being edited.
+ */
+describe("the policy file guards itself, in every tier", () => {
+  const POL = { HOME: "/home/testuser", KEEL_POLICY_FILE: "/home/testuser/.config/keel/policy.json" };
+
+  test("shell redirect into the policy file asks, with the why", () => {
+    const r = run({ tool_name: "Bash", tool_input: { command: 'echo "{}" > /home/testuser/.config/keel/policy.json' } }, POL);
+    assert.ok(isAsk(r), "the audit's exact probe must prompt now");
+    assert.match(r.json.hookSpecificOutput.permissionDecisionReason, /master switch/);
+  });
+
+  for (const cmd of [
+    "sed -i 's/x/y/' /home/testuser/.config/keel/policy.json",
+    "tee /home/testuser/.config/keel/policy.json < /tmp/evil.json",
+    "rm /home/testuser/.config/keel/policy.json",
+    "cat >> /home/testuser/.config/keel/policy.json <<'EOF'\n{}\nEOF",
+    "cp /tmp/evil.json /home/testuser/.config/keel/policy.json",
+  ]) {
+    test(`write shape asks: ${cmd.slice(0, 40)}...`, () => {
+      assert.ok(isAsk(run({ tool_name: "Bash", tool_input: { command: cmd } }, POL)), cmd);
+    });
+  }
+
+  test("merely READING the policy file stays free", () => {
+    assert.ok(isAllow(run({ tool_name: "Bash", tool_input: { command: "cat /home/testuser/.config/keel/policy.json" } }, POL)));
+  });
+
+  test("the overlay cannot exempt writes to itself", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-selfpol-"));
+    const file = join(dir, "policy.json");
+    writeFileSync(file, JSON.stringify({ bash: { allow: [{ pattern: ".*", reason: "allow everything" }] } }));
+    const r = run(
+      { tool_name: "Bash", tool_input: { command: `echo x > ${file}` } },
+      { HOME: "/home/testuser", KEEL_POLICY_FILE: file },
+    );
+    rmSync(dir, { recursive: true, force: true });
+    assert.ok(isAsk(r), "an allow-everything overlay must still not exempt its own rewrite");
+  });
+
+  test("file tools prompt at the KEEL_POLICY_FILE location, not just the default (XDG bug)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keel-xdgpol-"));
+    const file = join(dir, "policy.json");
+    const r = run(
+      { tool_name: "Write", tool_input: { file_path: file } },
+      { HOME: "/home/testuser", KEEL_POLICY_FILE: file },
+    );
+    rmSync(dir, { recursive: true, force: true });
+    assert.ok(isAsk(r), "the dynamic check must follow the env var, not the shipped glob");
+  });
+});
+
+describe("key material: the verbs and nesting the audit walked through", () => {
+  for (const cmd of [
+    "cat ~/.ssh/keys/id_rsa",
+    "cp ~/.ssh/id_rsa /tmp/k",
+    "xxd ~/.ssh/id_ed25519",
+    "openssl rsa -in ~/.ssh/id_rsa -text",
+    "grep . ~/.ssh/id_rsa",
+  ]) {
+    test(`asks: ${cmd}`, () => assert.ok(isAsk(bashAtHome(cmd)), cmd));
+  }
+  test("nested public keys stay free", () => {
+    assert.ok(isAllow(bashAtHome("cat ~/.ssh/keys/id_ed25519.pub")));
   });
 });

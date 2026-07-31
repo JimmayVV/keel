@@ -55,7 +55,8 @@ the condition under which keel stops touching it.
 | Surface | Used for | If the surface changes | Leaves when |
 |---|---|---|---|
 | `installed_plugins.json` (`installPath`, `gitCommitSha`) | the PATH shim resolves the current install; `keel update` detects version-pinned no-op updates | the shim errors loudly (Claude's own plugin dispatch is unaffected); update loses the sha repair and says so | a documented surface exposes the installed path/commit |
-| `~/.claude.json` — `officialMarketplaceAutoInstall*` keys only | `keel migrate` repairs the one state no vanilla install can reach: marketplace absent while the flag says present | the repair becomes a no-op; every other migrate path is unaffected | Claude Code repairs that state itself |
+| `~/.claude.json` — `officialMarketplaceAutoInstall*` keys (write), `mcpServers`/`projects` maps (read) | `keel migrate` repairs the one state no vanilla install can reach; `keel doctor` detects backends wired outside keel | the repair becomes a no-op; doctor's external-wiring note disappears; nothing else is affected | Claude Code repairs that state itself / documents an MCP inventory surface |
+| `known_marketplaces.json` (read) | `keel migrate` lists what this machine already has, so a re-run proposes only what is missing | migrate over-proposes and the user declines duplicates — annoying, not harmful | a documented marketplace inventory appears (treated as undocumented until a docs link is found) |
 | `plugins/marketplaces/keel` git checkout | `keel update` fast-forwards a checkout that `marketplace update` has been observed to leave stale | ff-only on a clean tree — the worst case is "already up to date," the state it started in | `marketplace update` reliably moves the checkout |
 
 These are exceptions, not precedent: each exists because the breakage was

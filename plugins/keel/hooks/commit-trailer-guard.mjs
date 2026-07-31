@@ -50,9 +50,18 @@ if (String(input?.tool_name ?? "") !== "Bash") allow();
 
 const command = String(input?.tool_input?.command ?? "");
 
-// Only inspect actual commit invocations. `git log --grep=...` and friends may
-// legitimately mention a trailer without creating one.
-if (!/\bgit\s+(-[^\s]+\s+|--[^\s]+(=\S+)?\s+)*commit\b/.test(command)) allow();
+// A trailer inside a heredoc redirected to a file is DATA — a script that
+// merely contains `git commit -m "<trailer>"` as text is not committing it.
+// A cold audit caught this guard blocking its own probe scripts; the sibling
+// security guard had the data/code distinction, this one didn't. Stripping
+// all heredoc bodies is a fail-open bias, which is this guard's stated mode.
+const stripped = command.replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?\n\s*\2(?=\s|$)/g, " <<HEREDOC_DATA");
+
+// Only inspect actual commit invocations. `git log --grep=...` may mention a
+// trailer without creating one. Flags between `git` and `commit` may carry a
+// separate argument (`git -C some/dir commit`) — the earlier regex missed
+// that form, so `-C` was a free bypass. Audit finding.
+if (!/\bgit\b(\s+--?\S+(\s+[^-\s]\S*)?)*\s+commit\b/.test(stripped)) allow();
 
 const blocked = (process.env.KEEL_BLOCKED_TRAILERS ?? "")
   .split(",")
@@ -60,7 +69,10 @@ const blocked = (process.env.KEEL_BLOCKED_TRAILERS ?? "")
   .filter(Boolean);
 const patterns = blocked.length ? blocked : DEFAULT_BLOCKED;
 
-const hit = patterns.find((p) => command.toLowerCase().includes(p.toLowerCase()));
+// Search the stripped form: heredoc bodies are data. Known limit, stated:
+// `git commit -F file` and the bare editor path carry the message outside the
+// command string and are not inspected here.
+const hit = patterns.find((p) => stripped.toLowerCase().includes(p.toLowerCase()));
 
 if (!hit) allow();
 

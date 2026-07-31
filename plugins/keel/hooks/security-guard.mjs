@@ -377,6 +377,20 @@ function checkPath(filePath) {
   const p = policy.paths ?? {};
   const hit = (list) => (list ?? []).some((g) => globToRe(g).test(abs));
 
+  // The guard's own policy file, wherever KEEL_POLICY_FILE or XDG put it —
+  // checked BEFORE the allow list, which must not be able to exempt edits to
+  // itself, and dynamically, because the shipped confirmWrite glob only knows
+  // the default location (the XDG bug a cold audit caught).
+  if (tool !== "Read" && abs === resolve(expandHome(USER_POLICY))) {
+    record("confirm", "edit of the guard's own policy", abs);
+    ask(
+      `[keel] Editing keel's security policy:\n\n  ${abs}\n\n` +
+        `This file is the guard's master switch — an allow rule here exempts\n` +
+        `commands from every shipped protection. If you asked for this change,\n` +
+        `approve it; if you didn't, deny it.`,
+    );
+  }
+
   // The same escape hatch bash rules have, for the same reason: an exemption
   // that only covers half the rule set isn't one. paths.allow is checked first
   // and wins outright.
@@ -522,6 +536,43 @@ function checkDeletion(command, raw) {
 if (tool === "Bash") {
   const raw = String(ti.command ?? "");
   const scanned = unwrapInterpreters(stripEnvPrefix(stripMessagePayloads(scannableText(raw))));
+
+  /**
+   * The guard's own configuration is the one write the overlay cannot exempt,
+   * which is why this runs BEFORE the allow loop. A cold audit proved the
+   * hole: `echo "{}" > ~/.config/keel/policy.json` sailed through with no
+   * prompt, and since a bash.allow entry defeats every shipped rule, the
+   * guard's master switch was one silent shell redirect away — exactly the
+   * indirect-injection chain the ingest boundary exists to make expensive.
+   * An escape hatch that can exempt edits to itself is not an escape hatch;
+   * it is a hole. KEEL_GUARD_OFF=1 remains the honest total switch.
+   *
+   * Detection is path-mention + write-shape. A command that merely READS the
+   * policy stays free; one that redirects, tee's, sed -i's, moves, copies
+   * onto, truncates, links, or removes it gets a reasoned prompt. Exotic
+   * write forms can evade a regex — this raises the cost, the message says
+   * so, and the file-tool side is airtight via checkPath.
+   */
+  {
+    const canonical = resolve(expandHome(USER_POLICY));
+    const home = homedir();
+    const mentions = [USER_POLICY, canonical]
+      .flatMap((p) => (p.startsWith(home) ? [p, "~" + p.slice(home.length)] : [p]));
+    const writeShape = /(>>?|\btee\b|\bsed\b[^|;&]*\s-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\bln\b|\binstall\b)/;
+    if (mentions.some((p) => raw.includes(p)) && writeShape.test(raw)) {
+      record("confirm", "shell write to the guard's own policy", raw);
+      ask(
+        `[keel] This command writes to keel's security policy:\n\n  ${canonical}\n\n` +
+          `That file is the guard's master switch — an allow rule written there\n` +
+          `exempts commands from every shipped protection, permanently and\n` +
+          `silently. If you asked for this edit (adding a rule, demoting key\n` +
+          `files to ask-mode), approve it. If you didn't, deny it: an unasked\n` +
+          `write here is how a compromised session takes its seatbelt off.\n` +
+          `This confirmation cannot be exempted by the overlay, because the\n` +
+          `overlay is the thing being edited.`,
+      );
+    }
+  }
 
   // Your exemptions win outright. Checked before every shipped rule, because the
   // point of an escape hatch is that it works without asking permission from the

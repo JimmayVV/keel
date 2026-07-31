@@ -157,3 +157,24 @@ describe("the ingest boundary's off switch", () => {
     assert.equal(off.json?.hookSpecificOutput, undefined, "KEEL_INGEST_OFF must be honoured");
   });
 });
+
+
+describe("trailer guard: the audit's two escapes", () => {
+  test("git -C <dir> commit is still a commit (flag-with-argument form)", () => {
+    const r = run("commit-trailer-guard.mjs", {
+      tool_name: "Bash",
+      tool_input: { command: `git -C /some/repo commit -m "x\n\n${TRAILER} <a@b>"` },
+    });
+    assert.equal(r.code, 2, "-C must not be a free bypass");
+  });
+
+  test("a heredoc-written script CONTAINING a commit+trailer is data, not a commit", () => {
+    const body = [
+      "cat > /tmp/demo.sh <<'SCRIPT'",
+      `git commit -m "x\n\n${TRAILER} <a@b>"`,
+      "SCRIPT",
+    ].join("\n");
+    const r = run("commit-trailer-guard.mjs", { tool_name: "Bash", tool_input: { command: body } });
+    assert.equal(r.code, 0, "writing a script that mentions a trailer is not committing one");
+  });
+});

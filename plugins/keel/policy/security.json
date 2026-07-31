@@ -112,12 +112,12 @@
         "reason": "Prints secret values in full"
       },
       {
-        "pattern": "\\b(cat|less|more|head|tail|bat|strings)\\b[^|>;&]*\\.ssh/id_[\\w.-]*?(?=[\"'\\s|;&)]|$)(?<!\\.pub)",
-        "reason": "Renders private key material into the transcript, which is sent to the model provider \u2014 a key that has been read has left this machine, and the only undo is rotation. If you did not ask for this, deny. Exits: paths/bash allow rules in ~/.config/keel/policy.json"
+        "pattern": "\\b(cat|less|more|head|tail|bat|strings|xxd|od|cp|dd|openssl|grep|awk)\\b[^|>;&]*\\.ssh/([\\w.-]+/)*id_[\\w.-]*?(?=[\"'\\s|;&)]|$)(?<!\\.pub)",
+        "reason": "Renders or copies private key material \u2014 anything read into the transcript is sent to the model provider, and the only undo is rotation. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
       },
       {
-        "pattern": "\\b(cat|less|more|head|tail|bat|strings)\\b[^|>;&]*(\\.aws/credentials|\\.credentials\\.json|private-keys-v1\\.d)",
-        "reason": "Renders credential material into the transcript, which is sent to the model provider. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
+        "pattern": "\\b(cat|less|more|head|tail|bat|strings|xxd|od|cp|dd|openssl|grep|awk)\\b[^|>;&]*(\\.aws/credentials|\\.credentials\\.json|private-keys-v1\\.d)",
+        "reason": "Renders or copies credential material into the transcript, which is sent to the model provider. If you did not ask for this, deny. Exits: allow rules in ~/.config/keel/policy.json"
       }
     ],
     "alert": [

@@ -23,13 +23,15 @@ stays, and how to remove each piece if you want it gone:
 | Your notes store, if you wired one | `KEEL_MEMORY_HOME` (default `~/.local/share/keel/notes`) | yours — move it or delete it |
 | Your policy overlay, if you wrote one | `~/.config/keel/policy.json` | `rm` it |
 | Installer state: backups and displaced configs | `~/.local/state/keel/` | `rm -r ~/.local/state/keel` |
+| Pre-XDG installer runs (older keel versions) | `~/claude-backup-*`, `~/keel-carryover` | `rm -r` each, after checking contents |
+| Flag-repair backup, if `keel migrate` ran the repair | `~/.claude.json.keel-backup` (or under `CLAUDE_CONFIG_DIR`) | `rm` it |
 
 `<config dir>` is `~/.claude` unless you set `CLAUDE_CONFIG_DIR`.
 
 Notes:
 
 - The env kill switches (`KEEL_GUARD_OFF`, `KEEL_ACTIVITY_OFF`,
-  `KEEL_TRAILERS_OFF`) need no cleanup — with the plugin gone there is nothing
+  `KEEL_TRAILERS_OFF`, `KEEL_INGEST_OFF`) need no cleanup — with the plugin gone there is nothing
   for them to switch off.
 - `keel migrate` once *deleted* stale keys from `~/.claude.json` (a repair, with
   a backup); there is nothing of keel's inside that file to remove.
