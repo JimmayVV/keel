@@ -2,8 +2,9 @@
 import "../styles/global.css";
 import Mark from "../components/Mark.astro";
 const { title = "keel — a curated layer under Claude Code", description = "A keel is the beam a hull is built on. This one goes under Claude Code: guards at the ingest boundary, commit hygiene, an activity log, and wiring for a notes backend that stays yours." } = Astro.props;
-const path = Astro.url.pathname.replace(/\.html$/, "").replace(/\/$/, "") || "/";
+const path = Astro.url.pathname.replace(/\.html$/, "").replace(/\/index$/, "").replace(/\/$/, "") || "/";
 const current = (p) => (path === p ? "page" : undefined);
+const canonical = new URL(path, Astro.site).href;
 ---
 <!doctype html>
 <html lang="en">
@@ -12,6 +13,7 @@ const current = (p) => (path === p ? "page" : undefined);
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title}</title>
   <meta name="description" content={description} />
+  <link rel="canonical" href={canonical} />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
 <body>

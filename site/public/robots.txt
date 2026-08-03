@@ -1,0 +1,11 @@
+# keel docs — https://keel.redlinelabs.dev
+#
+# Everything here is public documentation for an open-source tool, so the policy is:
+# crawl all of it. AI crawlers are deliberately allowed — keel's audience is people
+# running AI coding agents, and blocking Google-Extended has no effect on Search
+# ranking either way (it only governs Gemini training/grounding use).
+
+User-agent: *
+Allow: /
+
+Sitemap: https://keel.redlinelabs.dev/sitemap-index.xml
