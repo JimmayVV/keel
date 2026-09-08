@@ -38,7 +38,10 @@ leaving the user to copy them.
 - **Consent per fix.** Diagnosis is free; every repair is named before it runs.
   Doctor's fixes are safe and idempotent, but they are still the user's call.
 - **Distinguish broken from deliberate.** A backend "wired outside keel"
-  (Hindsight via `claude mcp add`) is doctor reporting reality, not a fault —
-  don't try to "fix" it.
+  (Hindsight via `claude mcp add`, with no keel adapter configured) is doctor
+  reporting reality, not a fault. When it is *also* wired through keel, doctor
+  names the duplicate and prints the `claude mcp remove`; offer it, don't run
+  it unasked. "Unreachable" on a machine that is off its tailnet is expected,
+  not broken — say so and move on.
 - **Short when healthy.** The whole value on a good machine is a fast, trustworthy
   "all good." Don't pad it.

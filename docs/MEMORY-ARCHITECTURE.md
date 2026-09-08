@@ -283,7 +283,9 @@ state.
   runs the hook and reports duplicated names; `KEEL_RECALL_OFF=1` disables it.
 - Observation layer — `keel/activity/*.jsonl`, append-only, device-scoped,
   machine-local by declaration ([ADR-0002])
-- One engine bridge — `keel-memory` (Basic Memory)
+- Two engine bridges — `keel-memory` (Basic Memory, local) and `keel-reflect`
+  (Hindsight over http; URL and bank from `settings.json`, bank created by
+  `keel setup`, health and bank checked by `keel doctor`)
 
 **Not built:**
 
@@ -292,7 +294,6 @@ state.
   embeddings, which need a service in the keystroke path, which the rule above
   forbids
 - The driver interface above — currently one hard-coded adapter shape
-- `keel-reflect` — a stub with `available: false` and no plugin behind it
 
 The honest summary: keel does recall's substrate well and does not retain at
 all. Everything you remember today, you wrote down yourself.

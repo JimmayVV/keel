@@ -47,10 +47,17 @@ so, which makes this safe to run any time as a check-up.
      default — that registration is the step that makes notes actually work,
      not just the directory. Then install the bridge (it is not enabled until
      installed): `claude plugin install keel-memory@keel`.
-   - **A shared self-hosted backend (e.g. Hindsight)** — keel does not manage
-     this; it is wired as an MCP server *outside* keel with `claude mcp add`,
-     and `keel doctor` reports it as "wired outside keel," which is correct and
-     not a problem. Confirm the server shows up in doctor.
+   - **A shared Hindsight bank (several machines, one brain)** — ask for the
+     instance URL (a tailnet hostname, e.g. `https://hindsight.<tailnet>.ts.net`)
+     and the bank name (default `personal`; a work machine must never point at a
+     personal instance — NETWORKING.md). Then:
+     `keel setup --hindsight-url <url> --hindsight-bank <bank> --non-interactive`
+     — setup checks the instance is healthy and creates the bank if missing,
+     saying which. Then install the bridge: `claude plugin install keel-reflect@keel`.
+     If doctor then reports the backend *also wired by hand* (an older
+     `claude mcp add`), offer the exact `claude mcp remove` it prints — two
+     entries for one backend, and the plugin now carries it. Removing is the
+     user's call.
 
    **Then verify, and fix in a loop.** Run `keel doctor`. If the notes adapter
    shows *mapping unverified* or *no project maps to this directory*, run the

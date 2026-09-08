@@ -62,7 +62,7 @@ const DEFAULT_BACKUP_DIR = join(XDG_STATE, "keel", "backups");
  * definition, so they go to settings.local.json, which is gitignored by
  * convention and safe to keep out of any dotfiles repo you sync by hand.
  */
-const OWNED_KEYS = ["KEEL_HINDSIGHT_URL"];
+const OWNED_KEYS = ["KEEL_HINDSIGHT_URL", "KEEL_HINDSIGHT_BANK"];
 const LOCAL_KEYS = ["KEEL_MEMORY_HOME", "KEEL_DEVICE"];
 
 const c = {
@@ -217,6 +217,95 @@ const INCLUDED = [
 // line rather than being buried in a requirements list.
 
 /**
+ * Hindsight over HTTP, the two calls keel makes to it.
+ *
+ * Both are reads a browser could make. Neither carries an API key: the
+ * supported shape is an instance that is private by network — behind a
+ * tailnet — rather than by credential. If your instance sets an API key,
+ * this adapter cannot speak to it yet; say so rather than guess a header.
+ *
+ * A short deadline, because doctor runs on machines whose homelab is off
+ * and "unreachable" is a normal answer there, not a hang.
+ */
+const HINDSIGHT_TIMEOUT_MS = Number(process.env.KEEL_HINDSIGHT_TIMEOUT_MS || 4000);
+
+async function hindsightGet(base, path) {
+  const url = `${base.replace(/\/+$/, "")}${path}`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(HINDSIGHT_TIMEOUT_MS), headers: { accept: "application/json" } });
+  const text = await r.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch { /* non-JSON body is reported as text */ }
+  return { status: r.status, json, text };
+}
+
+function hindsightBank() {
+  return effectiveEnv().KEEL_HINDSIGHT_BANK || "personal";
+}
+
+/**
+ * Is the instance up, and does the bank this machine points at exist?
+ *
+ * Reachable is the health endpoint answering "healthy". The bank check reads
+ * the bank list rather than the bank itself, because the bank resource only
+ * answers PUT and DELETE, not GET (probed 2026-09-08). Returns a drift string
+ * (a problem doctor prints) or an object with `note` for the green line.
+ */
+async function hindsightDrift(base) {
+  const bank = hindsightBank();
+  let health;
+  try {
+    health = await hindsightGet(base, "/health");
+  } catch (e) {
+    return `unreachable at ${base} (${e?.cause?.code ?? e?.name ?? e?.message ?? e})\n      if this machine is off its tailnet, that is expected — the session is dumber, not broken`;
+  }
+  if (health.status !== 200 || health.json?.status !== "healthy") {
+    return `${base}/health answered ${health.status}${health.json?.status ? ` (${health.json.status})` : ""} — not a healthy Hindsight`;
+  }
+  let banks;
+  try {
+    banks = await hindsightGet(base, "/v1/default/banks");
+  } catch (e) {
+    return { unverified: `bank list unreadable (${e?.name ?? e})` };
+  }
+  const list = Array.isArray(banks.json?.banks) ? banks.json.banks : null;
+  if (!list) return { unverified: `bank list answered ${banks.status}` };
+  const found = list.find((b) => b?.bank_id === bank);
+  if (!found) {
+    return `bank "${bank}" does not exist on ${base}\n      fix: keel setup --hindsight-url '${base}' --hindsight-bank '${bank}' --non-interactive  (creates it)`;
+  }
+  return { note: `bank "${bank}" · ${found.fact_count ?? "?"} facts` };
+}
+
+/**
+ * Create the bank if it is missing. PUT is idempotent on Hindsight, so this is
+ * safe to run on every setup; an existing bank is left exactly as it was.
+ * Undo: DELETE the same URL — and only if you created it, because a bank is
+ * everything that instance has learned under that name.
+ */
+async function hindsightEnsureBank(base) {
+  const bank = hindsightBank();
+  const url = `${base.replace(/\/+$/, "")}/v1/default/banks/${encodeURIComponent(bank)}`;
+  try {
+    const health = await hindsightGet(base, "/health");
+    if (health.json?.status !== "healthy") return `instance at ${base} is not healthy (${health.status}) — bank not created; re-run setup when it is up`;
+    const before = await hindsightGet(base, "/v1/default/banks");
+    const existed = Array.isArray(before.json?.banks) && before.json.banks.some((b) => b?.bank_id === bank);
+    if (existed) return `bank "${bank}" already exists`;
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ name: bank }),
+      signal: AbortSignal.timeout(HINDSIGHT_TIMEOUT_MS),
+    });
+    return r.ok
+      ? `bank "${bank}" created · undo: curl -X DELETE '${url}'`
+      : `bank "${bank}" could not be created (${r.status}) — create it: curl -X PUT '${url}' -H 'content-type: application/json' -d '{"name":"${bank}"}'`;
+  } catch (e) {
+    return `unreachable at ${base} (${e?.cause?.code ?? e?.name ?? e}) — bank not created; re-run setup on the tailnet`;
+  }
+}
+
+/**
  * Does Basic Memory actually write where KEEL_MEMORY_HOME points?
  *
  * doctor once reported ✔ on this adapter while every note landed in a session
@@ -313,24 +402,26 @@ const ADAPTERS = {
     plugin: "keel-reflect",
     externallyWired: () => findMcpServer(/hindsight/i),
     title: "Reflection (Hindsight)",
-    blurb: "Memory that revises its own conclusions over time, in the background.",
-    available: false,
-    reason:
-      "not shipped yet — the adapter was cut rather than released untested.\n" +
-      "        You almost certainly do not need it: everything keel does for weekly\n" +
-      "        summaries and priorities runs in-session on your existing subscription.\n" +
-      "        Reflection only matters if you want derivation while you are away.",
-    cost: "a self-hosted container, plus an inference provider of your choosing",
+    blurb: "One memory across every machine — a self-hosted Hindsight bank, reached over your tailnet.",
+    available: true,
+    cost: "a self-hosted Hindsight container you already run, plus its inference provider",
     egress:
-      "NOT zero by default — extraction calls a model. Local (Ollama/LM Studio)\n" +
-      "      is the only genuinely zero-egress configuration.",
+      "your prompts' recall queries and any facts you retain go to that host —\n" +
+      "      keep it on a private network (tailnet), never the open internet",
     envKey: "KEEL_HINDSIGHT_URL",
     flag: "hindsight-url",
-    prompt: "Hindsight base URL?",
+    prompt: "Hindsight base URL? (e.g. https://hindsight.<tailnet>.ts.net)",
     defaultValue: () => "http://localhost:8888",
-    prereq: () => ({ ok: false, what: "the keel-reflect adapter (not shipped yet)", fix: "see docs/MEMORY-ARCHITECTURE.md" }),
-    validate: (v) => (/^https?:\/\//.test(v ?? "") ? null : "must be an http(s) URL"),
-    postSetup: () => null,
+    // A second value rides along: which bank on that instance. Machines that
+    // share a bank share a brain (NETWORKING.md); the default is one bank.
+    extra: [{ envKey: "KEEL_HINDSIGHT_BANK", flag: "hindsight-bank", prompt: "Memory bank?", defaultValue: "personal" }],
+    // Nothing to install: the bridge is an http MCP server, spoken by Claude
+    // Code itself. The prerequisite is the instance being up, which is what
+    // verify() asks rather than assumes.
+    prereq: () => ({ ok: true }),
+    validate: (v) => (/^https?:\/\/[^\s/]+/.test(v ?? "") ? null : "must be an http(s) URL with a host"),
+    verify: (v) => hindsightDrift(v),
+    postSetup: (v) => hindsightEnsureBank(v),
   },
 };
 
@@ -761,7 +852,15 @@ async function cmdSetup(argv) {
       }
 
       const changed = (LOCAL_KEYS.includes(a.envKey) ? writeLocalEnv : writeOwnedEnv)({ [a.envKey]: value });
-      const note = a.postSetup(value);
+      // Companion values (a bank name beside a URL): flag, then existing, then
+      // a question, then the default — written before postSetup reads them.
+      for (const x of a.extra ?? []) {
+        let xv = flags[x.flag] ?? env[x.envKey];
+        if (!xv && interactive) xv = (await rl.question(`  ${x.prompt} ${c.dim(`[${x.defaultValue}]`)} `)).trim();
+        xv ||= x.defaultValue;
+        (LOCAL_KEYS.includes(x.envKey) ? writeLocalEnv : writeOwnedEnv)({ [x.envKey]: xv });
+      }
+      const note = await a.postSetup(value);
       console.log(`  ${c.green("✔")} ${changed ? "written to settings.json" : "already set"}${note ? ` · ${note}` : ""}`);
       // The hint has to match reality: `enable` only works on a plugin that is
       // already installed, and a fresh machine has not installed it yet.
@@ -782,7 +881,7 @@ async function cmdSetup(argv) {
   return missing;
 }
 
-function cmdDoctor() {
+async function cmdDoctor() {
   const env = effectiveEnv();
   let problems = 0;
   console.log(`\n${c.bold("keel doctor")}\n`);
@@ -957,8 +1056,9 @@ function cmdDoctor() {
       problems++;
       continue;
     }
-    const raw = a.verify?.(val);
+    const raw = await a.verify?.(val);
     const unverified = raw && typeof raw === "object" ? raw.unverified : null;
+    const note = raw && typeof raw === "object" ? raw.note : null;
     const drift = typeof raw === "string" ? raw : null;
     if (drift) {
       console.log(`  ${c.red("✖")} ${a.title} — ${drift}`);
@@ -981,7 +1081,16 @@ function cmdDoctor() {
       if (caveats.length) {
         console.log(`  ${c.dim("○")} ${a.title} ${c.dim(val)} — ${c.dim(caveats.join("; "))}`);
       } else {
-        console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}`);
+        console.log(`  ${c.green("✔")} ${a.title} ${c.dim(val)}${note ? ` ${c.dim(`— ${note}`)}` : ""}`);
+      }
+      // Wired through keel AND by hand is two carriers for one datum (ADR-0002):
+      // two server entries, no rule for which answers. Reported with the exact
+      // removal, not repaired — the hand-wired one may be pointed elsewhere.
+      const ext = a.externallyWired?.();
+      if (ext) {
+        console.log(`  ${c.yellow("!")} ${a.title} — also wired by hand as MCP server "${ext.name}"${ext.url ? ` ${c.dim(hostOf(ext.url) ?? ext.url)}` : ""}`);
+        console.log(`      ${c.dim("two entries for one backend; keel's plugin now carries it")}`);
+        console.log(`      fix: claude mcp remove ${ext.name}${ext.scope === "user" ? " --scope user" : ""}`);
       }
     }
   }
@@ -1833,7 +1942,7 @@ switch (cmd) {
   case "recall":
     process.exit(cmdRecall(process.argv.slice(3)));
   case "doctor":
-    cmdDoctor();
+    await cmdDoctor();
     break;
   case "update":
     cmdUpdate();

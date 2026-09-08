@@ -13,7 +13,7 @@ bulk — a minimal customization of the stock tool that lets your own work compo
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.
 
-> **Status:** v0.6, personal tool built in the open. Issues and PRs welcome and may be
+> **Status:** v0.7, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
 
 ---
@@ -59,6 +59,7 @@ allowed and what's forbidden, each with a docs link.
 |---|---|---|
 | **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
+| **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across every machine on your tailnet. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
 user should opt into"* — so they install dormant. One command turns each on.
