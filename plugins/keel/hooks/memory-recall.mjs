@@ -95,6 +95,10 @@ const BODY_ONLY_RELEVANCE = num(process.env.KEEL_RECALL_BODY_ONLY_RELEVANCE, 0.3
 /* A lone matched term has to carry this much of the prompt to count by itself. */
 const SOLO_TERM_SHARE = num(process.env.KEEL_RECALL_SOLO_SHARE, 0.3);
 const HEADLINE_WEIGHT = 3;
+/* A term found in this many files or fewer is a fingerprint — a name, a tool, a
+   codename — and one of those deep in a body is a match on its own. `npq` in
+   one file out of 271 is the case this exists for. */
+const FINGERPRINT_DF = 2;
 /* Two files sharing a name are copies only if their bodies mostly agree. Two
    projects each with a `setup.md` are two facts, not one. */
 const COPY_SIMILARITY = 0.8;
@@ -255,7 +259,9 @@ function idfFor(facts) {
     for (const t of seen) df.set(t, (df.get(t) || 0) + 1);
   }
   const n = Math.max(facts.length, 1);
-  return (t) => Math.log(1 + n / (1 + (df.get(t) || 0)));
+  const idf = (t) => Math.log(1 + n / (1 + (df.get(t) || 0)));
+  idf.df = (t) => df.get(t) || 0;
+  return idf;
 }
 
 let candidateCount = 0;
@@ -302,6 +308,7 @@ for (const fact of facts) {
   let raw = 0;
   let hits = 0;
   let bestSingle = 0;
+  let fingerprint = false;
   for (const t of promptTerms) {
     let w = 0;
     if (fact.headline.has(t)) w = HEADLINE_WEIGHT * idf(t);
@@ -310,6 +317,7 @@ for (const fact of facts) {
       raw += w;
       hits += 1;
       if (w > bestSingle) bestSingle = w;
+      if (idf.df(t) <= FINGERPRINT_DF) fingerprint = true;
     }
   }
   if (hits === 0) continue;
@@ -321,8 +329,10 @@ for (const fact of facts) {
   if (hits < 2 && bestSingle / fullIdeal < SOLO_TERM_SHARE) continue;
 
   const relevance = raw / ideal;
+  /* A body-only match clears the ordinary floor when it carries a fingerprint
+     term; otherwise it is two ordinary words in an essay and needs the higher one. */
   const headlineHit = [...promptTerms].some((t) => fact.headline.has(t));
-  if (relevance < (headlineHit ? MIN_RELEVANCE : BODY_ONLY_RELEVANCE)) continue;
+  if (relevance < (headlineHit || fingerprint ? MIN_RELEVANCE : BODY_ONLY_RELEVANCE)) continue;
   if (fact.local) raw *= 1.15;
   scored.push({ ...fact, relevance, raw });
 }

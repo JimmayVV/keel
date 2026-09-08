@@ -335,7 +335,9 @@ describe("review findings stay fixed", () => {
     // other two exist elsewhere in the corpus, so they count toward the ideal.
     const essay = `---\nname: pragmatism-notes\ndescription: "Notes on choosing the boring option"\n---\n\n${"Prefer the boring option. ".repeat(20)} The laptop build once took a whole Tuesday.\n`;
     const other = `---\nname: ci-retry-policy\ndescription: "How CI retries a flaky step"\n---\n\nA failing step is retried once; the fix for a real failure is a commit.\n`;
-    const { config, cleanup } = fixture(CWD, { "essay.md": essay, "ci.md": other });
+    // "laptop" and "build" appear in several files so neither is a fingerprint.
+    const furniture = (i) => `---\nname: note-${i}\ndescription: "Note ${i}"\n---\n\nThe laptop build for project ${i} is unremarkable.\n`;
+    const { config, cleanup } = fixture(CWD, { "essay.md": essay, "ci.md": other, "n1.md": furniture(1), "n2.md": furniture(2), "n3.md": furniture(3) });
     try {
       const { context } = runHook(
         { hook_event_name: "UserPromptSubmit", cwd: CWD, prompt: "can you fix the failing build on the laptop" },
