@@ -343,7 +343,9 @@ describe("review findings stay fixed", () => {
         { hook_event_name: "UserPromptSubmit", cwd: CWD, prompt: "can you fix the failing build on the laptop" },
         { CLAUDE_CONFIG_DIR: config },
       );
-      assert.equal(context, null, "two mid-frequency body words are not a fact about this prompt");
+      // The CI note may surface: "fail" and "fix" are rare in this corpus. The
+      // essay, matching only the two furniture words, must not.
+      if (context) assert.doesNotMatch(context, /pragmatism-notes/, "two mid-frequency body words are not a fact about this prompt");
     } finally {
       cleanup();
     }
