@@ -57,7 +57,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and six skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and six skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a

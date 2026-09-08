@@ -290,7 +290,24 @@ for (const fact of facts) {
 if (scored.length === 0) done();
 
 scored.sort((a, b) => b.raw - a.raw || a.name.localeCompare(b.name));
-scored = scored.slice(0, MAX_FACTS);
+
+/*
+ * One fact, one slot. The same fact recorded under two projects — which has
+ * happened here, twice in four weeks — would otherwise outrank a different fact
+ * by sheer repetition and spend two of three slots saying one thing. Files that
+ * share a `name` are treated as copies: the best-scoring one speaks, and the
+ * others are named beneath it so the duplicate can be found and deleted at the
+ * source rather than discovered again next month.
+ */
+{
+  const byName = new Map();
+  for (const fact of scored) {
+    const kept = byName.get(fact.name);
+    if (!kept) byName.set(fact.name, { ...fact, alsoAt: [] });
+    else kept.alsoAt.push(fact.path);
+  }
+  scored = [...byName.values()].slice(0, MAX_FACTS);
+}
 
 /* Cite, don't assert: every line carries the file it came from, so a wrong or
    stale fact can be checked and deleted in one read rather than argued with. */
@@ -301,7 +318,8 @@ for (const fact of scored) {
   const room = Math.max(0, MAX_CHARS - spent - headline.length - 80);
   if (room < 120) break;
   const excerpt = fact.body.length > room ? `${fact.body.slice(0, room).trimEnd()}…` : fact.body;
-  const block = `### ${headline}\nSource: ${fact.path}\n\n${excerpt}`;
+  const copies = fact.alsoAt.length ? `\nDuplicate at: ${fact.alsoAt.join(", ")}` : "";
+  const block = `### ${headline}\nSource: ${fact.path}${copies}\n\n${excerpt}`;
   parts.push(block);
   spent += block.length;
 }

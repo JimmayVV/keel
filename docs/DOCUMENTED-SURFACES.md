@@ -38,8 +38,10 @@ undocumented surface is a feature `keel` does not ship.
 A previous iteration of this system ingested transcript JSONL into Postgres to
 power recall. It worked, and it was the single least durable component owned —
 one transcript-format change away from silent breakage, with no test that would
-have caught it. Recall now comes from an MCP memory server, which is a
-documented integration point maintained by someone whose job it is.
+have caught it. Recall reads markdown under the documented auto-memory directory
+and arrives through the documented `UserPromptSubmit` field; durable notes go
+through an MCP memory server, a documented integration point maintained by
+someone whose job it is.
 
 That trade — *give up a bespoke capability to stand on documented ground* — is
 the central design decision of this project.
@@ -65,15 +67,24 @@ its own exit.
 
 ## Enforcing it
 
-**Today this is a convention, not a runtime check.** There is no code that
-validates keel's paths against the table above, and `keel doctor` does not
-report violations. The allowlist is enforced by review — a feature needing a new
+**A test checks the names; review checks the rest.** `surfaces.test.mjs` reads
+the tables in this file and scans the CLI and every hook for the file names they
+contain. A forbidden name may not appear in source at all — the one exemption is
+the security guard's own denylist, where naming a credential file is how it gets
+protected. An undocumented name may appear only if the exceptions table below
+carries a row for it, with all four columns filled. The test runs with the rest
+of the suite before every push.
+
+What the test cannot see, and does not claim to: runtime access. A path built at
+run time from pieces would pass it, and `keel doctor` does not watch the
+filesystem for violations. Those stay on review — a feature needing a new
 surface gets a row here with a docs link, or it does not ship.
 
 An earlier draft of this document claimed a `src/surfaces.ts` that encoded and
-enforced the list. It never existed. Stating a guarantee you do not implement is
-worse than stating none, because a reader budgets trust against it — so this
-section says what is true and the enforcement remains open work.
+enforced the list. It never existed, and for a month afterwards this section
+said enforcement was "open work." Stating a guarantee you do not implement is
+worse than stating none, because a reader budgets trust against it — so the
+paragraph above says exactly what the check covers and stops.
 
 ## keel's own data
 

@@ -29,8 +29,9 @@ machine may be behind; `keel update` is the fix, not improvisation.
 
 Three layers, one direction of trust:
 
-- **Hooks capture** — guards at the ingest boundary, the activity log.
-  Deterministic, no model calls, fail toward not breaking your session.
+- **Hooks capture** — guards at the ingest boundary, the activity log, query
+  recall from your memory files. Deterministic, no model calls, fail toward
+  not breaking your session.
 - **The CLI computes** — `keel status`, `keel log`, setup and repair verbs.
   Read-mostly; Claude usually runs it for you.
 - **Skills interpret** — everything with judgment lives here, invoked by your

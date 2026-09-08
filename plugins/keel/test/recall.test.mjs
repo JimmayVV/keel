@@ -148,6 +148,26 @@ describe("memory-recall", () => {
     }
   });
 
+  // The same fact filed under two projects has happened here twice. Left alone,
+  // repetition outranks relevance and one fact spends two of the three slots.
+  test("copies of one fact across projects share a single slot and name each other", () => {
+    const { config, cleanup } = fixture(CWD, { "monorepo.md": TURBOREPO_FACT, "poker.md": POKER_FACT });
+    const otherDir = join(config, "projects", "-tmp-some-other-project", "memory");
+    mkdirSync(otherDir, { recursive: true });
+    writeFileSync(join(otherDir, "turbo-copy.md"), TURBOREPO_FACT);
+    try {
+      const { context } = runHook(
+        { hook_event_name: "UserPromptSubmit", cwd: CWD, prompt: "where does the turborepo workspace put its packages" },
+        { CLAUDE_CONFIG_DIR: config, KEEL_RECALL_MAX_FACTS: "3" },
+      );
+      assert.ok(context);
+      assert.equal(context.match(/^### /gm).length, 1, "one fact, however many files hold it, is one entry");
+      assert.match(context, /Duplicate at: .*turbo-copy\.md/, "the copy is named so it can be deleted at the source");
+    } finally {
+      cleanup();
+    }
+  });
+
   test("KEEL_RECALL_OFF disables it without uninstalling", () => {
     const { config, cleanup } = fixture(CWD, { "monorepo.md": TURBOREPO_FACT });
     try {
