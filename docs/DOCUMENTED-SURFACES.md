@@ -13,10 +13,10 @@ undocumented surface is a feature `keel` does not ship.
 | Surface | What we use it for | Docs |
 |---|---|---|
 | `settings.json` schema + precedence | install, doctor, feature config | [settings](https://code.claude.com/docs/en/settings) |
-| Hook events — `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `InstructionsLoaded` | guards, auto-update | [hooks](https://code.claude.com/docs/en/hooks) |
+| Hook events — `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `InstructionsLoaded` | guards, activity log, query recall | [hooks](https://code.claude.com/docs/en/hooks) |
 | `CLAUDE.md` hierarchy, `@imports`, `claudeMdExcludes` | instruction layering | [memory](https://code.claude.com/docs/en/memory) |
 | `.claude/rules/` with `paths:` frontmatter | conditional instructions | [memory](https://code.claude.com/docs/en/memory) |
-| Auto memory dir + `autoMemoryDirectory` | data sync target | [memory](https://code.claude.com/docs/en/memory) |
+| Auto memory dir + `autoMemoryDirectory` | fact substrate; query recall reads `<config dir>/projects/*/memory/` — the default location only, a relocated `autoMemoryDirectory` is not followed | [memory](https://code.claude.com/docs/en/memory) |
 | Skills frontmatter — `description`, `disable-model-invocation`, `user-invocable`, `paths` | capability packaging | [skills](https://code.claude.com/docs/en/skills) |
 | Subagents + `memory:` field | scoped specialists | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
 | `.mcp.json`, MCP scopes, `--strict-mcp-config` | **bolting on third-party memory backends** | [mcp](https://code.claude.com/docs/en/mcp) |
@@ -38,8 +38,8 @@ undocumented surface is a feature `keel` does not ship.
 A previous iteration of this system ingested transcript JSONL into Postgres to
 power recall. It worked, and it was the single least durable component owned —
 one transcript-format change away from silent breakage, with no test that would
-have caught it. Recall reads markdown under the documented auto-memory directory
-and arrives through the documented `UserPromptSubmit` field; durable notes go
+have caught it. Recall reads markdown under the auto-memory directories at their
+default location and arrives through the documented `UserPromptSubmit` field; durable notes go
 through an MCP memory server, a documented integration point maintained by
 someone whose job it is.
 
@@ -48,7 +48,7 @@ the central design decision of this project.
 
 ## Acknowledged exceptions — undocumented, depended on, said out loud
 
-The rule says a feature needing an undocumented surface does not ship. Three
+The rule says a feature needing an undocumented surface does not ship. Four
 shipped anyway, as repairs for observed breakage, and a cold review
 (2026-07-30) caught the code calling one of them "documented." It is not, and
 pretending was worse than depending. Each is listed with its blast radius and
@@ -67,13 +67,15 @@ its own exit.
 
 ## Enforcing it
 
-**A test checks the names; review checks the rest.** `surfaces.test.mjs` reads
-the tables in this file and scans the CLI and every hook for the file names they
-contain. A forbidden name may not appear in source at all — the one exemption is
-the security guard's own denylist, where naming a credential file is how it gets
-protected. An undocumented name may appear only if the exceptions table below
-carries a row for it, with all four columns filled. The test runs with the rest
-of the suite before every push.
+**A test checks the names; review checks the rest.** `surfaces.test.mjs` carries
+a fixed list of forbidden and undocumented file names, checks that the tables in
+this file still list each one, and scans the CLI and every hook for them. A
+forbidden name may not appear in source at all — the one exemption is the
+security guard's own denylist, where naming a credential file is how it gets
+protected. An undocumented name may appear only if the exceptions table above
+carries a row for it, with all four columns filled. A name added to a table here
+is not scanned for until it is added to the test. The test runs with the rest of
+the suite before every push.
 
 What the test cannot see, and does not claim to: runtime access. A path built at
 run time from pieces would pass it, and `keel doctor` does not watch the

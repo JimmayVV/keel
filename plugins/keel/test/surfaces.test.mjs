@@ -19,6 +19,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,8 +58,8 @@ function namesIn(rows) {
 const forbidden = [
   ["history.jsonl", /history\.jsonl/],
   [".credentials.json", /\.credentials\.json/],
-  ["daemon/", /["'/]daemon["'/]/],
-  ["sessions/", /["'/]sessions["'/]/],
+  ["daemon/", /["'`/]daemon["'`/]/],
+  ["sessions/", /["'`/]sessions["'`/]/],
   ["projects/*/*.jsonl transcripts", /projects[^\n]*\.jsonl|\.jsonl[^\n]*projects/],
 ];
 
@@ -111,5 +112,26 @@ test("every undocumented surface the code touches has a row in the exceptions ta
   for (const row of rows) {
     assert.equal(row.length, 4, `exceptions row for ${row[0]} is missing a column (surface, use, if it changes, leaves when)`);
     for (const cell of row) assert.ok(cell.length > 0, `exceptions row for ${row[0]} has an empty cell`);
+  }
+});
+
+// The reflect plugin's .mcp.json sat in the working tree, passed validation and
+// every test, and was never committed: a root .gitignore rule for the repo's
+// own .mcp.json swallowed it. A plugin whose manifest points at a file the
+// clone does not contain is a plugin that installs and does nothing.
+test("every file a plugin manifest points at is tracked by git", () => {
+  const tracked = new Set(execFileSync("git", ["-C", root, "ls-files", "plugins"], { encoding: "utf8" }).split("\n"));
+  for (const dir of readdirSync(join(root, "plugins"))) {
+    const manifestPath = join("plugins", dir, ".claude-plugin", "plugin.json");
+    const manifest = JSON.parse(readFileSync(join(root, manifestPath), "utf8"));
+    for (const key of ["mcpServers", "hooks", "commands", "agents", "skills"]) {
+      const ref = manifest[key];
+      if (typeof ref !== "string") continue;
+      const rel = join("plugins", dir, ref);
+      assert.ok(
+        tracked.has(rel) || [...tracked].some((t) => t.startsWith(`${rel}/`)),
+        `${manifestPath} points at ${ref}, which git does not track — check .gitignore`,
+      );
+    }
   }
 });

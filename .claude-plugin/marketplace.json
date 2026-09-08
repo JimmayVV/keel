@@ -22,7 +22,7 @@
     {
       "name": "keel-reflect",
       "source": "./plugins/keel-reflect",
-      "description": "Shared memory adapter \u2014 a self-hosted Hindsight bank over http, one brain across every machine on your tailnet."
+      "description": "Shared memory adapter \u2014 a self-hosted Hindsight bank over http, one brain across the machines you point at the same bank."
     }
   ]
 }

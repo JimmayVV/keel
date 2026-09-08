@@ -229,6 +229,11 @@ const INCLUDED = [
  */
 const HINDSIGHT_TIMEOUT_MS = Number(process.env.KEEL_HINDSIGHT_TIMEOUT_MS || 4000);
 
+/** The reason a fetch failed, as a code a human can act on, not "TypeError". */
+function netReason(e) {
+  return e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.cause?.message ?? e?.code ?? e?.name ?? String(e);
+}
+
 async function hindsightGet(base, path) {
   const url = `${base.replace(/\/+$/, "")}${path}`;
   const r = await fetch(url, { signal: AbortSignal.timeout(HINDSIGHT_TIMEOUT_MS), headers: { accept: "application/json" } });
@@ -256,7 +261,7 @@ async function hindsightDrift(base) {
   try {
     health = await hindsightGet(base, "/health");
   } catch (e) {
-    return `unreachable at ${base} (${e?.cause?.code ?? e?.name ?? e?.message ?? e})\n      if this machine is off its tailnet, that is expected — the session is dumber, not broken`;
+    return `unreachable at ${base} (${netReason(e)})\n      if this machine is off its tailnet, that is expected — the session is dumber, not broken`;
   }
   if (health.status !== 200 || health.json?.status !== "healthy") {
     return `${base}/health answered ${health.status}${health.json?.status ? ` (${health.json.status})` : ""} — not a healthy Hindsight`;
@@ -301,7 +306,7 @@ async function hindsightEnsureBank(base) {
       ? `bank "${bank}" created · undo: curl -X DELETE '${url}'`
       : `bank "${bank}" could not be created (${r.status}) — create it: curl -X PUT '${url}' -H 'content-type: application/json' -d '{"name":"${bank}"}'`;
   } catch (e) {
-    return `unreachable at ${base} (${e?.cause?.code ?? e?.name ?? e}) — bank not created; re-run setup on the tailnet`;
+    return `unreachable at ${base} (${netReason(e)}) — bank not created; re-run setup on the tailnet`;
   }
 }
 
@@ -402,7 +407,7 @@ const ADAPTERS = {
     plugin: "keel-reflect",
     externallyWired: () => findMcpServer(/hindsight/i),
     title: "Reflection (Hindsight)",
-    blurb: "One memory across every machine — a self-hosted Hindsight bank, reached over your tailnet.",
+    blurb: "One memory across the machines you point at one Hindsight bank, reached over your tailnet.",
     available: true,
     cost: "a self-hosted Hindsight container you already run, plus its inference provider",
     egress:
@@ -414,12 +419,23 @@ const ADAPTERS = {
     defaultValue: () => "http://localhost:8888",
     // A second value rides along: which bank on that instance. Machines that
     // share a bank share a brain (NETWORKING.md); the default is one bank.
-    extra: [{ envKey: "KEEL_HINDSIGHT_BANK", flag: "hindsight-bank", prompt: "Memory bank?", defaultValue: "personal" }],
+    extra: [{
+      envKey: "KEEL_HINDSIGHT_BANK",
+      flag: "hindsight-bank",
+      prompt: "Memory bank?",
+      defaultValue: "personal",
+      // The bank lands in an MCP URL path unescaped, so it must be a path segment.
+      validate: (v) => (/^[A-Za-z0-9_-]+$/.test(v) ? null : "bank must be letters, digits, - or _ (it becomes a URL path segment)"),
+    }],
     // Nothing to install: the bridge is an http MCP server, spoken by Claude
     // Code itself. The prerequisite is the instance being up, which is what
     // verify() asks rather than assumes.
     prereq: () => ({ ok: true }),
-    validate: (v) => (/^https?:\/\/[^\s/]+/.test(v ?? "") ? null : "must be an http(s) URL with a host"),
+    // Host only. A pasted `/mcp/personal/` or a trailing slash would pass a looser
+    // test, satisfy doctor (which strips slashes) and still hand the plugin a URL
+    // with a double slash or a doubled path — green doctor, dead server.
+    validate: (v) => (/^https?:\/\/[^\s/?#]+$/.test(v ?? "") ? null : "must be an http(s) URL with a host and nothing after it (no path, no trailing slash)"),
+    normalize: (v) => String(v ?? "").trim().replace(/\/+$/, ""),
     verify: (v) => hindsightDrift(v),
     postSetup: (v) => hindsightEnsureBank(v),
   },
@@ -555,6 +571,16 @@ function cmdStatus() {
 // the same code a prompt runs, rather than a re-implementation that could
 // disagree with it.
 const RECALL_HOOK = join(dirname(fileURLToPath(import.meta.url)), "..", "hooks", "memory-recall.mjs");
+// Read from hooks.json so the probe's patience is the session's, not a second number.
+const RECALL_HOOK_TIMEOUT_MS = (() => {
+  try {
+    const hooks = JSON.parse(readFileSync(join(dirname(RECALL_HOOK), "hooks.json"), "utf-8"));
+    const entry = (hooks?.hooks?.UserPromptSubmit ?? []).flatMap((g) => g.hooks ?? []).find((h) => /memory-recall/.test(h.command ?? ""));
+    return (entry?.timeout ?? 5) * 1000;
+  } catch {
+    return 5000;
+  }
+})();
 
 /**
  * Run the recall hook exactly as Claude Code would: same stdin shape, same
@@ -564,10 +590,14 @@ const RECALL_HOOK = join(dirname(fileURLToPath(import.meta.url)), "..", "hooks",
  * did with a prompt is to ask it outside one.
  */
 function recallProbe(prompt, cwd = process.cwd()) {
+  // Claude Code layers settings.json `env` over the process environment for
+  // hooks; so does this, or a KEEL_RECALL_* knob set there would be invisible
+  // here and the probe would describe a hook that never runs that way.
   const r = spawnSync(process.execPath, [RECALL_HOOK], {
     input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt, cwd }),
     encoding: "utf-8",
-    timeout: 10000,
+    env: { ...process.env, ...effectiveEnv() },
+    timeout: RECALL_HOOK_TIMEOUT_MS,
   });
   if (r.error) return { ok: false, hook: RECALL_HOOK, error: String(r.error.message ?? r.error) };
   if (r.status !== 0) {
@@ -585,8 +615,9 @@ function recallProbe(prompt, cwd = process.cwd()) {
 
 /**
  * What the hook can see: every fact file under every project's memory dir. The
- * same walk the hook does, so the count doctor prints is the count recall
- * scores. Duplicate `name:` fields across projects are collected here because
+ * same directories the hook walks; the hook additionally skips files over 64 KB
+ * and stops at its deadline, so this count is an upper bound on what recall
+ * scores, not a promise. Duplicate `name:` fields across projects are collected here because
  * they are the one corpus defect that costs recall quality without any file
  * being wrong on its own.
  */
@@ -615,8 +646,11 @@ function memoryCorpus() {
       files++;
       let name = f.replace(/\.md$/, "");
       try {
+        // Front matter only, case-insensitive: the same rule the hook applies,
+        // so a `name:` in a body paragraph does not count here and not there.
         const head = readFileSync(join(dir, f), "utf-8").slice(0, 2048);
-        const m = head.match(/^name\s*:\s*(.+)$/m);
+        const fm = head.startsWith("---") ? head.slice(3, head.indexOf("\n---", 3) === -1 ? undefined : head.indexOf("\n---", 3)) : "";
+        const m = fm.match(/^name\s*:\s*(.+)$/mi);
         if (m) name = m[1].trim().replace(/^["']|["']$/g, "");
       } catch { /* unreadable file scores nothing in the hook either */ }
       const list = names.get(name) ?? [];
@@ -656,7 +690,11 @@ function cmdRecall(argv) {
     console.log(`\n  ${c.dim("recall surfaces one copy and names the rest; the stale one should go")}\n`);
     return 0;
   }
-  const prompt = argv.filter((a) => !a.startsWith("--")).join(" ").trim();
+  // Flags come first; the prompt is everything from the first non-flag word (or
+  // after a literal `--`) so a prompt that begins with a dash is still a prompt.
+  const dd = argv.indexOf("--");
+  const words = dd === -1 ? argv.slice(argv.findIndex((a) => !a.startsWith("--")) === -1 ? argv.length : argv.findIndex((a) => !a.startsWith("--"))) : argv.slice(dd + 1);
+  const prompt = words.join(" ").trim();
   if (!prompt) {
     console.log(`\n  usage: keel recall "<prompt>"    ${c.dim("what recall would inject for this prompt")}`);
     console.log(`         keel recall --duplicates  ${c.dim("facts recorded under more than one project")}\n`);
@@ -805,11 +843,28 @@ async function cmdSetup(argv) {
       const current = env[a.envKey];
       const flagValue = flags[a.flag];
       const skipped = flags["skip"]?.split(",").includes(name);
+      const unset = flags["unset"]?.split(",").includes(name);
 
       console.log(`${c.bold(a.title)}\n  ${c.dim(a.blurb)}`);
 
       if (skipped) {
         console.log(c.dim("  skipped (--skip)\n"));
+        continue;
+      }
+
+      // The undo for setup's own writes. Removes exactly the keys this adapter
+      // owns and nothing else; the plugin, if installed, is the user's to remove.
+      if (unset) {
+        const keys = [a.envKey, ...(a.extra ?? []).map((x) => x.envKey)];
+        let removed = false;
+        for (const k of keys) {
+          const write = LOCAL_KEYS.includes(k) ? writeLocalEnv : writeOwnedEnv;
+          removed = write({ [k]: null }) || removed;
+        }
+        console.log(`  ${c.green("✔")} ${removed ? `removed ${keys.join(", ")}` : "nothing was set"}`);
+        const ps = pluginState(a.plugin);
+        if (ps?.installed) console.log(`  ${c.dim(`the plugin stays until you say so: claude plugin uninstall ${a.plugin}@keel`)}`);
+        console.log("");
         continue;
       }
 
@@ -831,8 +886,11 @@ async function cmdSetup(argv) {
 
       if (!value) {
         if (!interactive) {
+          // Reported, not counted. Both adapters are optional, so a machine
+          // wiring one of them is doing exactly what it asked for — counting
+          // the other made `keel setup --hindsight-url U --non-interactive`
+          // exit 1 on a clean run, which every `&&` chain reads as failure.
           console.log(`  ${c.dim(`not configured — pass --${a.flag} <value> to wire it`)}\n`);
-          missing++;
           continue;
         }
         const want = (await rl.question(`  Configure it? [y/N] `)).trim().toLowerCase();
@@ -844,6 +902,7 @@ async function cmdSetup(argv) {
         value = (await rl.question(`  ${a.prompt} ${c.dim(`[${def}]`)} `)).trim() || def;
       }
 
+      value = (a.normalize ?? ((v) => String(v).trim()))(value);
       const bad = a.validate(value);
       if (bad) {
         console.log(`  ${c.red(`✖ ${bad}`)} — not written\n`);
@@ -851,14 +910,32 @@ async function cmdSetup(argv) {
         continue;
       }
 
-      const changed = (LOCAL_KEYS.includes(a.envKey) ? writeLocalEnv : writeOwnedEnv)({ [a.envKey]: value });
       // Companion values (a bank name beside a URL): flag, then existing, then
-      // a question, then the default — written before postSetup reads them.
+      // a question, then the default — validated like the main value, because a
+      // bare `--hindsight-bank` parses as "true" and would otherwise be written.
+      let extrasOk = true;
+      const extras = {};
       for (const x of a.extra ?? []) {
         let xv = flags[x.flag] ?? env[x.envKey];
+        if (xv === "true" && flags[x.flag] === "true") xv = ""; // a bare flag, not a value
         if (!xv && interactive) xv = (await rl.question(`  ${x.prompt} ${c.dim(`[${x.defaultValue}]`)} `)).trim();
-        xv ||= x.defaultValue;
-        (LOCAL_KEYS.includes(x.envKey) ? writeLocalEnv : writeOwnedEnv)({ [x.envKey]: xv });
+        xv = String(xv || x.defaultValue).trim();
+        const xbad = x.validate?.(xv);
+        if (xbad) {
+          console.log(`  ${c.red(`✖ ${xbad}`)}: ${xv} — not written\n`);
+          extrasOk = false;
+          break;
+        }
+        extras[x.envKey] = xv;
+      }
+      if (!extrasOk) {
+        missing++;
+        continue;
+      }
+
+      let changed = (LOCAL_KEYS.includes(a.envKey) ? writeLocalEnv : writeOwnedEnv)({ [a.envKey]: value });
+      for (const [k, v] of Object.entries(extras)) {
+        changed = (LOCAL_KEYS.includes(k) ? writeLocalEnv : writeOwnedEnv)({ [k]: v }) || changed;
       }
       const note = await a.postSetup(value);
       console.log(`  ${c.green("✔")} ${changed ? "written to settings.json" : "already set"}${note ? ` · ${note}` : ""}`);
@@ -928,8 +1005,9 @@ async function cmdDoctor() {
    * files is a different fact from "recall is healthy" over three hundred.
    */
   {
-    const r = recallProbe("keel doctor recall self-check probe");
-    if (process.env.KEEL_RECALL_OFF === "1") {
+    const recallOff = { ...process.env, ...effectiveEnv() }.KEEL_RECALL_OFF === "1";
+    const r = recallOff ? null : recallProbe("keel doctor recall self-check probe");
+    if (recallOff) {
       console.log(`  ${c.dim("○")} query recall off ${c.dim("(KEEL_RECALL_OFF=1)")}`);
     } else if (!r.ok) {
       console.log(`  ${c.red("✖")} query recall hook is broken — every prompt has been running without it`);
@@ -1088,7 +1166,7 @@ async function cmdDoctor() {
       // removal, not repaired — the hand-wired one may be pointed elsewhere.
       const ext = a.externallyWired?.();
       if (ext) {
-        console.log(`  ${c.yellow("!")} ${a.title} — also wired by hand as MCP server "${ext.name}"${ext.url ? ` ${c.dim(hostOf(ext.url) ?? ext.url)}` : ""}`);
+        console.log(`  ${c.yellow("!")} ${a.title} — also wired by hand as MCP server "${ext.name}"${ext.url ? ` ${c.dim(hostOf(ext.url) || ext.url)}` : ""}`);
         console.log(`      ${c.dim("two entries for one backend; keel's plugin now carries it")}`);
         console.log(`      fix: claude mcp remove ${ext.name}${ext.scope === "user" ? " --scope user" : ""}`);
       }
@@ -1958,7 +2036,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel status    what is wired            ${c.dim("(default)")}
   keel log       what you've been doing   ${c.dim("--days N [--json]")}
   keel recall    what memory would surface for a prompt  ${c.dim('"<prompt>" | --duplicates')}
-  keel setup     interactive wiring
+  keel setup     interactive wiring         ${c.dim("--<adapter>-… flags, --unset memory|reflect")}
   keel settings  recommended posture, with reasons  ${c.dim("--list to read without applying")}
   keel doctor    verify; exit 1 on problems
   keel update    pull the latest keel + bridge plugins

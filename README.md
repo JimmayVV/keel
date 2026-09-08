@@ -59,7 +59,7 @@ allowed and what's forbidden, each with a docs link.
 |---|---|---|
 | **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
-| **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across every machine on your tailnet. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
+| **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across the machines you point at the same bank. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
 user should opt into"* — so they install dormant. One command turns each on.
@@ -123,6 +123,15 @@ summary you can send.
 Captured from documented hook payloads (`UserPromptSubmit` and `Stop`), never by
 parsing transcripts. `KEEL_ACTIVITY_OFF=1` disables it; `KEEL_ACTIVITY_DIR`
 relocates it.
+
+### Query recall
+
+Before each prompt, a hook scores the fact files under every project's memory
+directory against what you typed and injects up to three, each citing its file,
+inside a fence marked as data rather than instructions. Local reads only, no
+network, and silence on most prompts by design: a memory that volunteers noise
+gets tuned out. `keel recall "<prompt>"` shows what a prompt would receive;
+`KEEL_RECALL_OFF=1` disables it.
 
 ### Commit hygiene
 

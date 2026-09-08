@@ -113,3 +113,39 @@ describe("applying rules", () => {
     rmSync(w.root, { recursive: true, force: true });
   });
 });
+
+/**
+ * Setup writes two owned keys for the reflect adapter and, before this, had no
+ * way to take them back — "every write ships its undo" was unmet, and a machine
+ * that uninstalled the plugin kept failing doctor on keys nothing read.
+ */
+import { spawnSync as spawnSyncUnset } from "node:child_process";
+import { mkdtempSync as mkdtempUnset, mkdirSync as mkdirUnset, writeFileSync as writeUnset, readFileSync as readUnset, rmSync as rmUnset, chmodSync as chmodUnset } from "node:fs";
+import { tmpdir as tmpdirUnset } from "node:os";
+import { join as joinUnset, dirname as dirnameUnset } from "node:path";
+import { fileURLToPath as fileURLToPathUnset } from "node:url";
+
+test("keel setup --unset reflect removes exactly the adapter's keys", () => {
+  const root = mkdtempUnset(joinUnset(tmpdirUnset(), "keel-unset-"));
+  const cfg = joinUnset(root, "cfg");
+  const bin = joinUnset(root, "bin");
+  mkdirUnset(cfg);
+  mkdirUnset(bin);
+  writeUnset(joinUnset(bin, "claude"), "#!/bin/sh\necho '[]'\n");
+  chmodUnset(joinUnset(bin, "claude"), 0o755);
+  writeUnset(joinUnset(cfg, "settings.json"), JSON.stringify({ env: { KEEL_HINDSIGHT_URL: "http://x", KEEL_HINDSIGHT_BANK: "personal", UNRELATED: "kept" }, permissions: { allow: ["Bash(ls:*)"] } }));
+  const keel = joinUnset(dirnameUnset(fileURLToPathUnset(import.meta.url)), "..", "bin", "keel");
+  const r = spawnSyncUnset(process.execPath, [keel, "setup", "--unset", "reflect", "--non-interactive"], {
+    encoding: "utf-8",
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: root, CLAUDE_CONFIG_DIR: cfg },
+  });
+  try {
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /removed KEEL_HINDSIGHT_URL, KEEL_HINDSIGHT_BANK/);
+    const after = JSON.parse(readUnset(joinUnset(cfg, "settings.json"), "utf-8"));
+    assert.deepEqual(after.env, { UNRELATED: "kept" });
+    assert.deepEqual(after.permissions, { allow: ["Bash(ls:*)"] }, "nothing else in the file moves");
+  } finally {
+    rmUnset(root, { recursive: true, force: true });
+  }
+});

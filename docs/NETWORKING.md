@@ -68,7 +68,9 @@ and bank from `settings.json`, so there is no file to hand-edit and nothing
 else to install: Claude Code speaks http MCP itself.
 
 Add a machine by running those two lines on it. Remove one with
-`claude plugin uninstall keel-reflect@keel`. Reach the instance from outside the
+`keel setup --unset reflect` (drops the two keys from `settings.json`) and
+`claude plugin uninstall keel-reflect@keel`; either alone leaves `keel doctor`
+reporting the half that stayed. Reach the instance from outside the
 house over your tailnet — do not expose it to the LAN or the internet, because it
 holds everything it has learned about you, and this adapter sends no API key:
 the instance is private by network, not by credential.

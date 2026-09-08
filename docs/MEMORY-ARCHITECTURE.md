@@ -276,8 +276,10 @@ state.
 
 - Substrate — auto-memory for machine facts, the notes store for decided facts
 - Ambient recall — native, no keel code involved
-- Query recall — `memory-recall.mjs` on `UserPromptSubmit`, scoring every
-  project's memory files against the prompt with IDF-weighted term overlap.
+- Query recall — `memory-recall.mjs` on `UserPromptSubmit`, scoring the fact
+  files under `<config dir>/projects/*/memory/` (index and >64 KB files
+  excluded, within a 1.2 s budget) against the prompt with IDF-weighted term
+  overlap, and injecting them inside a fence marked as data.
   Copies of one fact across projects share a slot and name each other.
   `keel recall "<prompt>"` shows what a prompt would receive; `keel doctor`
   runs the hook and reports duplicated names; `KEEL_RECALL_OFF=1` disables it.

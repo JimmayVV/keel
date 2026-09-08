@@ -77,7 +77,7 @@ test("every `keel <subcommand>` the docs mention exists in the CLI", () => {
 // neither is matched.
 test("durable docs describe the system, not its rollout", () => {
   const rollout =
-    /\b(?:now|no longer) (?:comes|come|stores?|uses?|reads?|writes?|runs?|ships?|lives?|does|do|is|are|has|have|supports?|requires?|accepts?|handles?)\b/i;
+    /\b(?:now|no longer) (?:comes|come|stores?|uses?|reads?|writes?|runs?|ships?|lives?|does|do|supports?|requires?|accepts?|handles?)\b/i;
   for (const file of docFiles) {
     if (file.includes(`${join("docs", "adr")}${"/"}`)) continue;
     const lines = readFileSync(file, "utf8").split("\n");

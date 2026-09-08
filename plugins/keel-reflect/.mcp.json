@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hindsight": {
+      "type": "http",
+      "url": "${KEEL_HINDSIGHT_URL}/mcp/${KEEL_HINDSIGHT_BANK:-personal}/"
+    }
+  }
+}

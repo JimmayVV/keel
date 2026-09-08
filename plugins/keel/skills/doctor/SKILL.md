@@ -41,7 +41,8 @@ leaving the user to copy them.
   (Hindsight via `claude mcp add`, with no keel adapter configured) is doctor
   reporting reality, not a fault. When it is *also* wired through keel, doctor
   names the duplicate and prints the `claude mcp remove`; offer it, don't run
-  it unasked. "Unreachable" on a machine that is off its tailnet is expected,
-  not broken — say so and move on.
+  it unasked. Doctor marks an unreachable Hindsight ✖ and exits 1; on a machine
+  that is off its tailnet that is the expected report — relay it, don't try to
+  repair it, and say the session is dumber, not broken.
 - **Short when healthy.** The whole value on a good machine is a fast, trustworthy
   "all good." Don't pad it.

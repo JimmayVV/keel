@@ -127,7 +127,7 @@ elif [ -n "$PYV" ] && [ "$(printf '%s\n3.12\n' "$PYV" | sort -V | head -1)" = "3
 else
   dim "notes adapter: python ${PYV:-none} is below 3.12; uv will provision one — pip3 install --user uv"
 fi
-dim "reflection:    not in v0.1 — nothing to prepare"
+dim "reflection:    nothing to install — Claude Code speaks http MCP itself"
 
 # ── 2. back up ──────────────────────────────────────────────────────────────
 b $'\n2. Back up'
