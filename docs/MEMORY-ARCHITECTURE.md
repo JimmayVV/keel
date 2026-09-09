@@ -276,16 +276,26 @@ state.
 
 - Substrate — auto-memory for machine facts, the notes store for decided facts
 - Ambient recall — native, no keel code involved
+- Query recall — `memory-recall.mjs` on `UserPromptSubmit`, scoring the fact
+  files under `<config dir>/projects/*/memory/` (index and >64 KB files
+  excluded, within a 1.2 s budget) against the prompt with IDF-weighted term
+  overlap, and injecting them inside a fence marked as data.
+  Copies of one fact across projects share a slot and name each other.
+  `keel recall "<prompt>"` shows what a prompt would receive; `keel doctor`
+  runs the hook and reports duplicated names; `KEEL_RECALL_OFF=1` disables it.
 - Observation layer — `keel/activity/*.jsonl`, append-only, device-scoped,
   machine-local by declaration ([ADR-0002])
-- One engine bridge — `keel-memory` (Basic Memory)
+- Two engine bridges — `keel-memory` (Basic Memory, local) and `keel-reflect`
+  (Hindsight over http; URL and bank from `settings.json`, bank created by
+  `keel setup`, health and bank checked by `keel doctor`)
 
 **Not built:**
 
 - **Retain. There is no fact-extraction step at all.** This is the real gap.
-- Query recall via `UserPromptSubmit` — the hook is documented and unused
+- Vocabulary-gap recall — `daily` and `day` do not match; closing that needs
+  embeddings, which need a service in the keystroke path, which the rule above
+  forbids
 - The driver interface above — currently one hard-coded adapter shape
-- `keel-reflect` — a stub with `available: false` and no plugin behind it
 
 The honest summary: keel does recall's substrate well and does not retain at
 all. Everything you remember today, you wrote down yourself.

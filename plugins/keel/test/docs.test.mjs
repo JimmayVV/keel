@@ -66,6 +66,31 @@ test("every `keel <subcommand>` the docs mention exists in the CLI", () => {
   }
 });
 
+// "Recall now comes from an MCP memory server" sat in DOCUMENTED-SURFACES.md
+// after recall came from a hook, and MEMORY-ARCHITECTURE.md called that hook
+// "unused" on the branch that shipped it. Both are the same sentence shape: a
+// rollout narrated in the present tense, true on the day it was written and
+// unfalsifiable afterwards because nothing re-reads it. Durable docs describe
+// how the thing works; "now" and "no longer" belong in commit messages, where
+// the date travels with them. ADRs are point-in-time by design and history
+// sections written in the past tense ("used to ship") name their own tense, so
+// neither is matched.
+test("durable docs describe the system, not its rollout", () => {
+  const rollout =
+    /\b(?:now|no longer) (?:comes|come|stores?|uses?|reads?|writes?|runs?|ships?|lives?|does|do|supports?|requires?|accepts?|handles?)\b/i;
+  for (const file of docFiles) {
+    if (file.includes(`${join("docs", "adr")}${"/"}`)) continue;
+    const lines = readFileSync(file, "utf8").split("\n");
+    lines.forEach((line, i) => {
+      assert.ok(
+        !rollout.test(line),
+        `${file.slice(root.length + 1)}:${i + 1} narrates a rollout — say how it works today, ` +
+          `and leave "now"/"no longer" to the commit message: ${line.trim()}`,
+      );
+    });
+  }
+});
+
 // A cold review (2026-07-30) found the README naming one skill while four
 // shipped, and three version numbers disagreeing — drift the original two
 // checks were too narrow to see. Same disease, wider net.

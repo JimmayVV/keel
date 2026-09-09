@@ -1,0 +1,10 @@
+{
+  "name": "keel-reflect",
+  "displayName": "Keel · Reflection (Hindsight)",
+  "version": "0.1.0",
+  "description": "One memory across the machines you point at the same bank. Wires a self-hosted Hindsight bank as an http MCP server, reached over your tailnet — the URL and bank come from keel setup, nothing else to install.",
+  "author": { "name": "Jimmy Van Veen" },
+  "license": "MIT",
+  "defaultEnabled": false,
+  "mcpServers": "./.mcp.json"
+}

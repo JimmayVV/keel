@@ -13,7 +13,7 @@ bulk — a minimal customization of the stock tool that lets your own work compo
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.
 
-> **Status:** v0.6, personal tool built in the open. Issues and PRs welcome and may be
+> **Status:** v0.7, personal tool built in the open. Issues and PRs welcome and may be
 > politely declined. Fork freely; that's what the licence is for.
 
 ---
@@ -46,8 +46,8 @@ one format change from silent breakage. Claude Code's own changelog notes a rele
 *"reduced transcript size up to 79×"*: exactly the kind of change that breaks a parser with
 no test to catch it.
 
-The allowlist is currently a written convention, not a runtime check — there is no code
-that enforces it and `keel doctor` does not verify it. See
+A test checks the file names keel's code touches against the allowlist; runtime access
+stays on review, and `keel doctor` does not watch for it. See
 [docs/DOCUMENTED-SURFACES.md](docs/DOCUMENTED-SURFACES.md) for the full table of what's
 allowed and what's forbidden, each with a docs link.
 
@@ -57,8 +57,9 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, the `keel` CLI, and six skills — `week` (what happened), `deck` (what's promised and what's next), `telos` (what it's all for), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
+| **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across the machines you point at the same bank. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
 
 Adapters ship `defaultEnabled: false` — documented for *"plugins that add cost or scope a
 user should opt into"* — so they install dormant. One command turns each on.
@@ -122,6 +123,15 @@ summary you can send.
 Captured from documented hook payloads (`UserPromptSubmit` and `Stop`), never by
 parsing transcripts. `KEEL_ACTIVITY_OFF=1` disables it; `KEEL_ACTIVITY_DIR`
 relocates it.
+
+### Query recall
+
+Before each prompt, a hook scores the fact files under every project's memory
+directory against what you typed and injects up to three, each citing its file,
+inside a fence marked as data rather than instructions. Local reads only, no
+network, and silence on most prompts by design: a memory that volunteers noise
+gets tuned out. `keel recall "<prompt>"` shows what a prompt would receive;
+`KEEL_RECALL_OFF=1` disables it.
 
 ### Commit hygiene
 

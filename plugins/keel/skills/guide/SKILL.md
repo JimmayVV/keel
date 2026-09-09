@@ -1,5 +1,5 @@
 ---
-description: Explain how keel works and how to use what it ships — the guards, the CLI, and the skills. Use when the user asks what keel is or added, how a keel skill works ("how does deck work", "explain telos", "what can keel do", "keel help"), or wants a demo or walkthrough of a keel skill without committing to it.
+description: Explain how keel works and how to use what it ships — the guards, the CLI, and the skills. Use when the user asks what keel is or added, how a keel skill works ("how does deck work", "explain week", "what can keel do", "keel help"), or wants a demo or walkthrough of a keel skill without committing to it.
 ---
 
 # Guide — keel, explained from the live tree
@@ -29,16 +29,17 @@ machine may be behind; `keel update` is the fix, not improvisation.
 
 Three layers, one direction of trust:
 
-- **Hooks capture** — guards at the ingest boundary, the activity log.
-  Deterministic, no model calls, fail toward not breaking your session.
+- **Hooks capture** — guards at the ingest boundary, the activity log, query
+  recall from your memory files. Deterministic, no model calls, fail toward
+  not breaking your session.
 - **The CLI computes** — `keel status`, `keel log`, setup and repair verbs.
   Read-mostly; Claude usually runs it for you.
 - **Skills interpret** — everything with judgment lives here, invoked by your
   intent, never running behind your back.
 
-The skills form a why-stack: `telos` (what it's all for) ranks objectives that
-inform `deck` (what's promised and what's next), and `week` reconstructs what
-actually happened. Each layer is checkable against the one below.
+The skills stack in time: `deck` (what's promised and what's next) looks
+forward, `week` reconstructs what actually happened. Each is checkable against
+the log beneath it.
 
 ## Walkthrough mode — "show me, don't sign me up"
 
@@ -51,11 +52,6 @@ interview.
 - **deck** — read the commitments file if one exists and show the triage
   report with live data; do not rewrite the note. If none exists, show the
   format and what capture would look like for something the user said today.
-- **telos** — gather the evidence (`keel log`, commitments, git), present the
-  drafted objectives with citations, and name what the goals and mission
-  layers would need from the user — then stop, explicitly, where the
-  interview would begin. The point of the demo is that they can see the
-  bottom layers are derived and the top layer is theirs.
 
 End every walkthrough by saying what the real invocation is and what it would
 do that the demo didn't.

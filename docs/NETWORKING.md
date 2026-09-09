@@ -51,16 +51,33 @@ and no dependency on a service being up.
 A self-hosted [Hindsight](https://hindsight.vectorize.io) instance that every
 machine talks to. **This is not sync.** There is no repo, no merge, and no
 conflict resolution, because there is only one store. Memory banks are selected
-by URL path, so pointing three machines at the same path makes them one brain:
+by URL path, so pointing three machines at the same bank makes them one brain.
+
+On each machine, two lines — the same two on the first and the tenth:
 
 ```sh
-claude mcp add --transport http hindsight \
-  http://<host>.<tailnet>.ts.net:8888/mcp/personal/
+keel setup --hindsight-url https://<host>.<tailnet>.ts.net --hindsight-bank personal --non-interactive
+claude plugin install keel-reflect@keel
 ```
 
-Add a machine by giving it that URL. Remove one by taking the URL away. Reach it
-from outside the house over your tailnet — do not expose the port to the LAN or
-the internet, because it holds everything it has learned about you.
+Or say it to a session: *"wire this machine to my Hindsight at
+https://hindsight.<tailnet>.ts.net"* — the `setup` skill drives those same two
+commands and finishes with `keel doctor`. Setup creates the bank if it is
+missing and leaves it alone if it exists. The plugin's MCP server reads the URL
+and bank from `settings.json`, so there is no file to hand-edit and nothing
+else to install: Claude Code speaks http MCP itself.
+
+Add a machine by running those two lines on it. Remove one with
+`keel setup --unset reflect` (drops the two keys from `settings.json`) and
+`claude plugin uninstall keel-reflect@keel`; either alone leaves `keel doctor`
+reporting the half that stayed. Reach the instance from outside the
+house over your tailnet — do not expose it to the LAN or the internet, because it
+holds everything it has learned about you, and this adapter sends no API key:
+the instance is private by network, not by credential.
+
+`keel doctor` asks the instance directly — health, and whether the bank exists —
+and names a Hindsight server wired by hand alongside the plugin, because two
+entries for one backend is two carriers for one datum.
 
 The trade, stated plainly: when the instance is unreachable, that session has no
 shared memory. Native per-project memory still works, the guards still work, the

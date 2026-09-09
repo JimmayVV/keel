@@ -3,7 +3,7 @@
 Two commands remove the software:
 
 ```sh
-claude plugin uninstall keel@keel        # and keel-memory@keel if you enabled it
+claude plugin uninstall keel@keel        # and keel-memory@keel / keel-reflect@keel if you installed them
 claude plugin marketplace remove keel
 ```
 
@@ -31,7 +31,7 @@ stays, and how to remove each piece if you want it gone:
 Notes:
 
 - The env kill switches (`KEEL_GUARD_OFF`, `KEEL_ACTIVITY_OFF`,
-  `KEEL_TRAILERS_OFF`, `KEEL_INGEST_OFF`) need no cleanup — with the plugin gone there is nothing
+  `KEEL_TRAILERS_OFF`, `KEEL_INGEST_OFF`, `KEEL_RECALL_OFF`) need no cleanup — with the plugin gone there is nothing
   for them to switch off.
 - `keel migrate` once *deleted* stale keys from `~/.claude.json` (a repair, with
   a backup); there is nothing of keel's inside that file to remove.

@@ -4,7 +4,7 @@ node_modules/
 # agent worktrees — transient, never part of the project
 .claude/worktrees/
 .atrium/
-.mcp.json
+/.mcp.json
 site/node_modules/
 site/dist/
 site/.astro/

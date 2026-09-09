@@ -59,6 +59,15 @@ _Avoid_: integration, backend plugin
 The external system an adapter wires in (Basic Memory, Hindsight). Swappable, and
 never load-bearing for remembering.
 
+**Ambient recall**:
+Claude Code loading the current project's memory index natively. No keel code;
+the floor everything else stands on.
+
+**Query recall**:
+keel's `UserPromptSubmit` hook scoring fact files across projects against the
+prompt and injecting the few that clear a relevance floor, fenced as data.
+_Avoid_: search, retrieval
+
 **Felt need**:
 A need that has occurred at least once, here, to the user — not in someone else's
 demo, repo, or documentation. The admission bar for anything beyond prose (ADR-0001).

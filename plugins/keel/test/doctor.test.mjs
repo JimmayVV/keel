@@ -12,7 +12,7 @@
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync, copyFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KEEL = join(HERE, "..", "bin", "keel");
+const RECALL_HOOK = join(HERE, "..", "hooks", "memory-recall.mjs");
 
 /**
  * A temp world: config dir with the memory adapter wired, stub CLIs on PATH.
@@ -151,6 +152,66 @@ describe("doctor probes that the activity log is actually writable", () => {
 });
 
 /**
+ * Query recall fails silent by design, and that hid a ReferenceError through
+ * three rounds of hand probing: the hook crashed on every prompt and the turn
+ * proceeded as if there were nothing to recall. Doctor runs the real hook so a
+ * present-but-broken hook is a problem, and a duplicated fact is at least said.
+ */
+describe("doctor runs the recall hook instead of assuming it", () => {
+  test("a working hook -> green, with the corpus size", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const mem = join(w.cfg, "projects", "-tmp-a", "memory");
+    mkdirSync(mem, { recursive: true });
+    writeFileSync(join(mem, "x.md"), "---\nname: x\n---\nbody\n");
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /query recall runs.*1 fact file\(s\) across 1 project\(s\)/);
+    assert.doesNotMatch(r.stdout, /more than one project/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("the same fact under two projects is reported by name and both paths", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    for (const p of ["-tmp-a", "-tmp-b"]) {
+      const mem = join(w.cfg, "projects", p, "memory");
+      mkdirSync(mem, { recursive: true });
+      writeFileSync(join(mem, "same.md"), "---\nname: shared-fact\n---\nbody\n");
+    }
+    const r = doctor(w);
+    assert.equal(r.status, 0, r.stdout, "a duplicate is a warning, not a failure — which copy is canonical is the user's call");
+    assert.match(r.stdout, /1 memory name\(s\) recorded in more than one project/);
+    assert.match(r.stdout, /shared-fact: .*-tmp-a.*same\.md, .*-tmp-b.*same\.md/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("a hook that crashes -> problem, not 'all good'", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const bin = join(w.root, "broken", "bin");
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(join(w.root, "broken", "hooks"));
+    copyFileSync(KEEL, join(bin, "keel"));
+    writeFileSync(join(w.root, "broken", "hooks", "memory-recall.mjs"), "throw new ReferenceError('nope is not defined');\n");
+    const r = spawnSync(process.execPath, [join(bin, "keel"), "doctor"], {
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, HOME: w.root, CLAUDE_CONFIG_DIR: w.cfg },
+    });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /query recall hook is broken/);
+    assert.match(r.stdout, /ReferenceError/);
+    assert.doesNotMatch(r.stdout, /all good/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+
+  test("KEEL_RECALL_OFF -> reported off, not broken", () => {
+    const w = world(JSON.stringify([{ id: "keel-memory@keel", enabled: true }]));
+    const r = doctor(w, { KEEL_RECALL_OFF: "1" });
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /query recall off/);
+    rmSync(w.root, { recursive: true, force: true });
+  });
+});
+
+/**
  * doctor said "all good" on a machine running a CLI fourteen commits behind.
  * It checked the activity log, the adapters and the plugin roster — everything
  * except itself. The PATH symlink pointed into the plugin cache at a version
@@ -169,6 +230,10 @@ describe("doctor checks which keel is running", () => {
       copies[v] = join(cache, v, "bin", "keel");
       copyFileSync(KEEL, copies[v]);
       chmodSync(copies[v], 0o755);
+      // A real install ships the hooks beside the CLI, and doctor runs one of
+      // them. A copy without them is a broken install, which is its own test.
+      mkdirSync(join(cache, v, "hooks"));
+      copyFileSync(RECALL_HOOK, join(cache, v, "hooks", "memory-recall.mjs"));
     }
     writeFileSync(
       join(w.cfg, "plugins", "installed_plugins.json"),
@@ -252,6 +317,150 @@ describe("doctor checks which keel is running", () => {
     assert.equal(r.status, 0, r.stdout);
     assert.match(r.stdout, /no plugin install record/);
     rmSync(w.root, { recursive: true, force: true });
+  });
+});
+
+/**
+ * The reflect adapter is an http MCP server and a URL in settings.json. Nothing
+ * on the machine can be inspected to know it works — only the instance can say.
+ * So doctor asks it: health, then whether the bank this machine points at
+ * exists. A stub Hindsight here answers those two routes and nothing else, so
+ * the tests neither need nor touch a real homelab.
+ */
+describe("doctor asks the Hindsight instance, not the config", () => {
+  const enabled = JSON.stringify([
+    { id: "keel-memory@keel", enabled: true },
+    { id: "keel-reflect@keel", enabled: true },
+  ]);
+
+  /** A fake Hindsight: /health and /v1/default/banks, shaped like 0.8.5's answers. */
+  async function stub({ healthy = true, banks = ["personal"] } = {}) {
+    const { createServer } = await import("node:http");
+    const server = createServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/health") {
+        res.statusCode = healthy ? 200 : 503;
+        res.end(JSON.stringify({ status: healthy ? "healthy" : "degraded" }));
+      } else if (req.url === "/v1/default/banks") {
+        res.end(JSON.stringify({ banks: banks.map((b) => ({ bank_id: b, name: b, fact_count: 42 })) }));
+      } else {
+        res.statusCode = 405;
+        res.end(JSON.stringify({ detail: "Method Not Allowed" }));
+      }
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    return { url: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
+  }
+
+  /**
+   * spawnSync would block the event loop the stub server lives on, so doctor
+   * would time out talking to a server that never gets to answer. Async spawn.
+   */
+  function doctorAsync(w, extraEnv = {}) {
+    return new Promise((resolve) => {
+      const child = spawn(process.execPath, [KEEL, "doctor"], {
+        env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, HOME: w.root, CLAUDE_CONFIG_DIR: w.cfg, ...extraEnv },
+      });
+      let stdout = "";
+      child.stdout.on("data", (d) => { stdout += d; });
+      child.on("close", (status) => resolve({ status, stdout }));
+    });
+  }
+
+  function reflectWorld(url, bank) {
+    const w = world(enabled);
+    const env = { KEEL_MEMORY_HOME: join(w.root, "notes"), KEEL_HINDSIGHT_URL: url };
+    if (bank) env.KEEL_HINDSIGHT_BANK = bank;
+    writeFileSync(join(w.cfg, "settings.json"), JSON.stringify({ env }));
+    return w;
+  }
+
+  test("healthy instance with the bank -> green, naming the bank and its size", async () => {
+    const s = await stub();
+    const w = reflectWorld(s.url);
+    try {
+      const r = await doctorAsync(w);
+      assert.equal(r.status, 0, r.stdout);
+      assert.match(r.stdout, /Reflection \(Hindsight\).*bank "personal" · 42 facts/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("the bank this machine points at is missing -> problem, with the setup command that creates it", async () => {
+    const s = await stub({ banks: ["personal"] });
+    const w = reflectWorld(s.url, "work");
+    try {
+      const r = await doctorAsync(w);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, /bank "work" does not exist/);
+      assert.match(r.stdout, /keel setup --hindsight-url .* --hindsight-bank 'work'/);
+      assert.doesNotMatch(r.stdout, /all good/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("an unhealthy instance -> problem", async () => {
+    const s = await stub({ healthy: false });
+    const w = reflectWorld(s.url);
+    try {
+      const r = await doctorAsync(w);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, /not a healthy Hindsight/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("an unreachable instance -> problem, said to be expected off the tailnet", async () => {
+    const s = await stub();
+    s.close(); // a port nothing listens on
+    const w = reflectWorld(s.url);
+    try {
+      const r = await doctorAsync(w, { KEEL_HINDSIGHT_TIMEOUT_MS: "1500" });
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, /unreachable at http:\/\/127\.0\.0\.1/);
+      assert.match(r.stdout, /off its tailnet/);
+    } finally {
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("configured through keel AND by hand -> the duplicate carrier is named, with its removal", async () => {
+    const s = await stub();
+    const w = reflectWorld(s.url);
+    writeFileSync(join(w.root, ".claude.json"), JSON.stringify({ mcpServers: { hindsight: { type: "http", url: `${s.url}/mcp/personal/` } } }));
+    try {
+      const r = await doctorAsync(w);
+      assert.equal(r.status, 0, r.stdout, "a duplicate is reported, not counted — the hand-wired one may be deliberate");
+      assert.match(r.stdout, /also wired by hand as MCP server "hindsight"/);
+      assert.match(r.stdout, /claude mcp remove hindsight --scope user/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("configured but the keel-reflect plugin is not installed -> problem, with the install fix", async () => {
+    const s = await stub();
+    const w = reflectWorld(s.url);
+    writeFileSync(
+      join(w.bin, "claude"),
+      `#!/bin/sh\nif [ "$1 $2" = "plugin list" ]; then printf '%s' '[{"id":"keel-memory@keel","enabled":true}]'; exit 0; fi\nexit 1\n`,
+    );
+    try {
+      const r = await doctorAsync(w);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, /keel-reflect plugin is not installed/);
+      assert.match(r.stdout, /claude plugin install keel-reflect@keel/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
   });
 });
 

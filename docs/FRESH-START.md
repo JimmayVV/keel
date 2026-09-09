@@ -288,9 +288,9 @@ keel setup --memory-home "$HOME/notes"
 claude plugin enable keel-memory
 ```
 
-**Reflection** — not in v0.1. `keel status` explains why, and you almost certainly
-don't need it: weekly summaries and priority conversations run in-session on your
-existing subscription.
+**Reflection** — a shared Hindsight bank, if you run one. Two lines, see
+[NETWORKING.md](NETWORKING.md); no interpreter or package needed, the bridge is
+an http MCP server Claude Code speaks itself.
 
 ---
 

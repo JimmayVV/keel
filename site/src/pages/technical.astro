@@ -78,6 +78,16 @@ import Base from "../layouts/Base.astro";
           relocates.</p>
         </div>
         <div class="card">
+          <h3 id="recall">query recall</h3>
+          <p>A <code>UserPromptSubmit</code> hook that scores the fact files under
+          <code>&lt;config dir&gt;/projects/*/memory/</code> against the prompt — rare
+          terms outweigh common ones, crude stemming, a relevance floor — and injects
+          up to three, each citing its file, inside a <code>&lt;keel-memory&gt;</code>
+          fence marked as data. Local reads only, a 1.2 s budget, silence on most
+          prompts by design. <code>keel recall "…"</code> shows what a prompt would
+          get; <code>KEEL_RECALL_OFF=1</code> disables.</p>
+        </div>
+        <div class="card">
           <h3 id="memory-wiring">memory wiring</h3>
           <p>Third-party memory engines bolt on as bridge plugins declaring MCP servers
           via <code>.mcp.json</code> — a documented integration point. keel ships no
@@ -87,8 +97,8 @@ import Base from "../layouts/Base.astro";
         </div>
         <div class="card">
           <h3 id="cli">the cli</h3>
-          <p><code>keel status · log · doctor · setup · settings · update · migrate ·
-          link</code> — read-mostly, flags-first, idempotent writes only to
+          <p><code>keel status · log · recall · doctor · setup · settings · update ·
+          migrate · link</code> — read-mostly, flags-first, idempotent writes only to
           <code>KEEL_*</code> keys it owns — plus, with your explicit consent, the
           <code>permissions</code> rules <code>keel settings --yes</code> appends —
           with a backup of the pre-run state before the first write. It
@@ -186,7 +196,7 @@ import Base from "../layouts/Base.astro";
       </ul>
       <p class="sub">Every guard has an off-switch — <code>KEEL_GUARD_OFF</code>,
       <code>KEEL_ACTIVITY_OFF</code>, <code>KEEL_TRAILERS_OFF</code>,
-      <code>KEEL_INGEST_OFF</code> — and every write has a backup and an undo. A guard
+      <code>KEEL_INGEST_OFF</code>, <code>KEEL_RECALL_OFF</code> — and every write has a backup and an undo. A guard
       that can break your workflow is a guard you'll eventually disable — so the ingest
       boundary never blocks, the log never calls a model, and
       <a href="https://github.com/JimmayVV/keel/blob/main/docs/UNINSTALL.md">the whole
