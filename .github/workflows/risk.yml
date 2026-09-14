@@ -1,0 +1,32 @@
+name: Risk
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  risk:
+    uses: JimmayVV/fleet-ci/.github/workflows/risk.yml@v1
+    with:
+      # Anything that changes what ships to a user's machine, or how CI
+      # decides to merge, waits for a human.
+      high-paths: |
+        plugins/*/.claude-plugin/**
+        plugins/*/.mcp.json
+        plugins/keel/bin/**
+        plugins/keel/hooks/**
+        plugins/keel/policy/**
+        scripts/**
+        .github/workflows/**
+      low-paths: |
+        **/*.md
+        docs/**
+        site/**
+        plugins/*/test/**
+        .github/dependabot.yml
+        LICENSE
+        NOTICE
+        .editorconfig
+        .gitignore
+  dependabot:
+    uses: JimmayVV/fleet-ci/.github/workflows/dependabot-automerge.yml@v1

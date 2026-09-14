@@ -51,3 +51,15 @@ Commit messages and docs carry reasons, not just changes — the style is
 "what broke, why this shape, what it costs." Trailer rules apply (the
 commit-trailer guard enforces them). Say less than the code holds, never
 more.
+
+## CI and merge policy
+
+- Workflows call `JimmayVV/fleet-ci@v1`; policy changes happen there, not here.
+- Every PR gets a `risk:*` label. Low (docs, site, tests) auto-merges on green.
+  Medium auto-merges on green plus a `VERDICT: clean` review comment. High
+  (manifests, `bin/`, `hooks/`, `policy/`, `scripts/`, workflows) waits for
+  a human.
+- Read the review bot's findings before merging anything it flagged; a green
+  job is not the bar, the comment is.
+- Dependabot patch and minor bumps of Actions auto-merge; majors are labelled
+  high and wait.
