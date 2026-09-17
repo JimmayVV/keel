@@ -16,6 +16,7 @@
  *   keel status     what is wired, what is missing, what is stale
  *   keel log        what you asked and concluded, by day and project
  *   keel recall     what query recall would inject for a prompt; --duplicates
+ *   keel retain-id  the canonical Hindsight document id for a file; --audit
  *   keel setup      name this machine and wire the enabled adapters
  *   keel settings   recommended posture, each rule explained and linked
  *   keel doctor     verify prerequisites and configuration; exit 1 on problems
@@ -217,9 +218,11 @@ const INCLUDED = [
 // line rather than being buried in a requirements list.
 
 /**
- * Hindsight over HTTP, the two calls keel makes to it.
+ * Hindsight over HTTP, the calls keel makes to it.
  *
- * Both are reads a browser could make. Neither carries an API key: the
+ * All but one are reads a browser could make — health, the bank list, and the
+ * document list the retain ledger audits; the exception is the idempotent PUT
+ * that creates a bank at setup. None carries an API key: the
  * supported shape is an instance that is private by network — behind a
  * tailnet — rather than by credential. If your instance sets an API key,
  * this adapter cannot speak to it yet; say so rather than guess a header.
@@ -308,6 +311,161 @@ async function hindsightEnsureBank(base) {
   } catch (e) {
     return `unreachable at ${base} (${netReason(e)}) — bank not created; re-run setup on the tailnet`;
   }
+}
+
+/**
+ * ── the retain ledger ───────────────────────────────────────────────────────
+ *
+ * A retained document is addressed by an id, and the id is the whole of what
+ * makes retain idempotent: re-sending a file under the same id updates that
+ * document, under a different one adds a second copy that nothing reconciles.
+ *
+ * That convention used to live as a sentence in a CLAUDE.md — instruction
+ * text, which a model follows approximately. Measured on this machine on
+ * 2026-09-17, after seven weeks: 80 documents under six different id shapes,
+ * five notes stored twice with one copy months stale, eleven ids naming no
+ * file, four invented by hand and therefore unupdatable forever. Recall was
+ * free to answer a September question with July's document.
+ *
+ * So the id is computed here instead of remembered there. Prose can now say
+ * "ask keel for the id", which is a claim a command backs.
+ */
+
+/**
+ * The canonical document id for a file on disk.
+ *
+ * Two forms, both deliberately independent of $HOME and of the username, so
+ * that every machine pointed at one bank derives the same id for the same
+ * note — that is the property the whole ledger rests on:
+ *
+ *   <config>/projects/<slug>/memory/x.md  ->  projects/<slug>/memory/x.md
+ *   anything else under $HOME             ->  its path relative to $HOME
+ *
+ * A path outside $HOME gets no id and says why: keyed on an absolute path, it
+ * would mean a different thing on the next box, which is the failure this
+ * exists to end.
+ */
+function retainId(p) {
+  const abs = resolve(String(p).replace(/^~(?=\/|$)/, homedir()));
+  const projects = `${join(CONFIG_DIR, "projects")}/`;
+  if (abs.startsWith(projects)) {
+    const rest = abs.slice(projects.length).split("/");
+    if (rest.length === 3 && rest[1] === "memory" && rest[2]) {
+      return { id: `projects/${rest[0]}/memory/${rest[2]}` };
+    }
+    // Under projects/ but not the memory-file shape. No special form; fall
+    // through to home-relative rather than invent one.
+  }
+  const home = `${homedir().replace(/\/+$/, "")}/`;
+  if (abs.startsWith(home)) return { id: abs.slice(home.length) };
+  return { error: `no machine-independent id for a path outside $HOME: ${abs}` };
+}
+
+/** The file a document id refers to — the inverse of retainId, for auditing. */
+function retainPath(id) {
+  if (id.startsWith("/")) return id; // a non-canonical absolute id, read as-is
+  if (id.startsWith("projects/")) {
+    const rest = id.slice("projects/".length).split("/");
+    if (rest.length === 3 && rest[1] === "memory") return join(CONFIG_DIR, "projects", rest[0], "memory", rest[2]);
+  }
+  if (/^[a-z_]+:/i.test(id)) return null; // hand-written id, names no path at all
+  return join(homedir(), id);
+}
+
+/**
+ * Every document in the bank. Paged, because the endpoint caps at 100 and a
+ * silently truncated ledger would report healthy files as never retained.
+ */
+async function retainDocuments(base) {
+  const bank = hindsightBank();
+  const items = [];
+  for (let page = 0; page < 50; page++) {
+    const r = await hindsightGet(base, `/v1/default/banks/${encodeURIComponent(bank)}/documents?limit=100&offset=${items.length}`);
+    if (r.status !== 200 || !Array.isArray(r.json?.items)) return { error: `document list answered ${r.status}` };
+    if (!r.json.items.length) break;
+    items.push(...r.json.items);
+    if (items.length >= Number(r.json.total ?? items.length)) break;
+  }
+  return { items };
+}
+
+/**
+ * Compare the bank against disk.
+ *
+ * What this can and cannot see: the retained text is a session's summary of a
+ * file, not the file's bytes — content_hash is a hash of what was sent, so it
+ * can never be recomputed from disk. Freshness therefore rests on mtime
+ * against the document's updated_at, which is a weaker signal than a hash and
+ * is reported as "changed since", not as "wrong".
+ */
+function retainLedger(items) {
+  const byFile = new Map();
+  const noncanonical = [];
+  const orphans = [];
+  const unaddressable = [];
+  const stale = [];
+
+  for (const d of items) {
+    const id = String(d?.id ?? "");
+    if (!id) continue;
+    const path = retainPath(id);
+    if (!path) {
+      unaddressable.push({ id });
+      continue;
+    }
+    if (!existsSync(path)) {
+      orphans.push({ id, path });
+      continue;
+    }
+    const want = retainId(path).id;
+    if (want && want !== id) noncanonical.push({ id, want, path });
+    const list = byFile.get(path) ?? [];
+    list.push(d);
+    byFile.set(path, list);
+
+    const seen = Date.parse(d?.updated_at ?? "");
+    let mtime = NaN;
+    try { mtime = statSync(path).mtimeMs; } catch { /* raced with a delete */ }
+    // A minute of slack: the retain happens seconds after the write, and the
+    // two clocks are not the same clock.
+    if (Number.isFinite(seen) && Number.isFinite(mtime) && mtime > seen + 60_000) {
+      stale.push({ id, path, seen: d.updated_at });
+    }
+  }
+
+  const duplicates = [...byFile.entries()]
+    .filter(([, docs]) => docs.length > 1)
+    .map(([path, docs]) => ({ path, ids: docs.map((d) => String(d.id)) }));
+
+  // Never retained, counted over keel's own corpus only. The journal and
+  // anything else a user retains by hand is their convention, not keel's, and
+  // doctor has no business calling its absence a fault.
+  //
+  // "Never retained" means no document names this file under ANY id — asking
+  // for the canonical id here instead would count every badly-addressed
+  // document twice, once as drift and again as a gap, and overstate the hole
+  // by the size of the drift. Those are different repairs and separate rows.
+  const missing = [];
+  let corpus = 0;
+  const root = join(CONFIG_DIR, "projects");
+  let dirs = [];
+  try {
+    dirs = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch { /* no corpus yet */ }
+  for (const project of dirs) {
+    const dir = join(root, project, "memory");
+    let files = [];
+    try {
+      files = readdirSync(dir).filter((f) => f.endsWith(".md") && f !== "MEMORY.md");
+    } catch { continue; }
+    for (const f of files) {
+      corpus++;
+      const path = join(dir, f);
+      if (!byFile.has(path)) missing.push(path);
+    }
+  }
+
+  return { total: items.length, corpus, duplicates, noncanonical, orphans, unaddressable, stale, missing };
 }
 
 /**
@@ -712,6 +870,97 @@ function cmdRecall(argv) {
     return 0;
   }
   console.log(`\n${r.context}\n`);
+  return 0;
+}
+
+/**
+ * `keel retain-id <path>` — the id to retain that file under, and nothing else.
+ *
+ * Deliberately not `keel retain`: keel does not send anything to Hindsight and
+ * must not be read as if it did. It answers one question — what is this file's
+ * address in the bank — so the answer stops being improvised per session.
+ *
+ * `--audit` is the same comparison doctor summarises, listed in full, in the
+ * shape of the commands that repair each row.
+ */
+async function cmdRetainId(argv) {
+  const flags = parseFlags(argv);
+  const paths = argv.filter((a) => !a.startsWith("--"));
+
+  if (!flags.audit && !paths.length) {
+    console.log(`\n  usage: keel retain-id <path>...   ${c.dim("the bank id for a file, for retain's document id")}`);
+    console.log(`         keel retain-id --audit     ${c.dim("compare the bank against disk")}\n`);
+    return 1;
+  }
+
+  if (!flags.audit) {
+    let bad = 0;
+    for (const p of paths) {
+      const { id, error } = retainId(p);
+      if (error) {
+        console.log(`  ${c.red("✖")} ${error}`);
+        bad++;
+      } else {
+        // Bare on stdout: this is meant to be read by a session and pasted
+        // into a retain call, so it carries no decoration to strip.
+        console.log(id);
+      }
+    }
+    return bad ? 1 : 0;
+  }
+
+  const base = effectiveEnv().KEEL_HINDSIGHT_URL;
+  if (!base) {
+    console.log(`\n  ${c.dim("no reflection backend configured — nothing to audit")}`);
+    console.log(`  ${c.dim("keel setup --hindsight-url ... wires one")}\n`);
+    return 0;
+  }
+  const got = await retainDocuments(base);
+  if (got.error) {
+    console.log(`\n  ${c.red("✖")} ${got.error} at ${base}\n`);
+    return 1;
+  }
+  const l = retainLedger(got.items);
+  console.log(`\n  ${c.bold(`${l.total} document(s)`)} in bank "${hindsightBank()}" · ${l.corpus - l.missing.length} of ${l.corpus} memory file(s) retained\n`);
+
+  if (l.duplicates.length) {
+    console.log(`  ${c.bold("stored twice")} ${c.dim("— recall may answer from either copy, including the stale one")}`);
+    for (const d of l.duplicates) {
+      console.log(`      ${d.path.replace(homedir(), "~")}`);
+      const want = retainId(d.path).id;
+      for (const id of d.ids) console.log(`        ${id === want ? c.green("keep") : c.red("drop")}  ${id}`);
+    }
+    console.log("");
+  }
+  if (l.noncanonical.length) {
+    console.log(`  ${c.bold("id is not canonical")} ${c.dim("— the next retain adds a copy instead of updating this one")}`);
+    for (const n of l.noncanonical) console.log(`      ${n.id}\n        ${c.dim("->")} ${n.want}`);
+    console.log("");
+  }
+  if (l.unaddressable.length) {
+    console.log(`  ${c.bold("id names no file")} ${c.dim("— hand-written, so no retain can ever update it")}`);
+    for (const u of l.unaddressable) console.log(`      ${u.id}`);
+    console.log("");
+  }
+  if (l.orphans.length) {
+    console.log(`  ${c.bold("file is gone")} ${c.dim("— a deleted note, or one whose project directory moved")}`);
+    for (const o of l.orphans) console.log(`      ${o.id}`);
+    console.log("");
+  }
+  if (l.stale.length) {
+    console.log(`  ${c.bold("changed since it was retained")} ${c.dim("— by mtime, which is a hint and not proof")}`);
+    for (const s of l.stale) console.log(`      ${s.id} ${c.dim(`retained ${String(s.seen).slice(0, 10)}`)}`);
+    console.log("");
+  }
+  if (l.missing.length) {
+    console.log(`  ${c.bold("never retained")} ${c.dim("— expected for notes written before this bank existed")}`);
+    for (const m of l.missing.slice(0, 20)) console.log(`      ${retainId(m).id}`);
+    if (l.missing.length > 20) console.log(`      ${c.dim(`…and ${l.missing.length - 20} more`)}`);
+    console.log("");
+  }
+
+  const clean = !l.duplicates.length && !l.noncanonical.length && !l.unaddressable.length && !l.orphans.length;
+  console.log(clean ? `  ${c.green("every document in the bank is canonically addressed")}\n` : `  ${c.dim("ids are computed, never typed: keel retain-id <path>")}\n`);
   return 0;
 }
 
@@ -1169,6 +1418,60 @@ async function cmdDoctor() {
         console.log(`  ${c.yellow("!")} ${a.title} — also wired by hand as MCP server "${ext.name}"${ext.url ? ` ${c.dim(hostOf(ext.url) || ext.url)}` : ""}`);
         console.log(`      ${c.dim("two entries for one backend; keel's plugin now carries it")}`);
         console.log(`      fix: claude mcp remove ${ext.name}${ext.scope === "user" ? " --scope user" : ""}`);
+      }
+    }
+  }
+
+  /**
+   * Is the bank addressed the way the convention says, and does it know about
+   * the files on disk?
+   *
+   * The reflect check above proves the instance answers and the bank exists.
+   * Neither says anything about what is *in* it, and this is the gap that cost
+   * seven weeks: retain kept succeeding, into ids nothing would ever update
+   * again. A duplicate is the one that does harm rather than waste — two
+   * documents for one note, no rule for which recall returns, and the loser
+   * was months stale. So duplicates are a problem; the rest are reported.
+   *
+   * Never-retained is deliberately not a problem. A bank created after the
+   * notes is the normal case and backfilling is the user's call, not doctor's.
+   */
+  {
+    const base = env.KEEL_HINDSIGHT_URL;
+    const off = { ...process.env, ...env }.KEEL_RETAIN_CHECK_OFF === "1";
+    if (base && off) {
+      console.log(`  ${c.dim("○")} retain ledger check off ${c.dim("(KEEL_RETAIN_CHECK_OFF=1)")}`);
+    } else if (base) {
+      const got = await retainDocuments(base);
+      if (got.error) {
+        // The adapter check above already reported an unreachable instance;
+        // this is the narrower case of a reachable one whose document list
+        // will not parse. Unverified, not a fault.
+        console.log(`  ${c.dim("○")} retain ledger unverified ${c.dim(`(${got.error})`)}`);
+      } else {
+        const l = retainLedger(got.items);
+        const retained = l.corpus - l.missing.length;
+        console.log(`  ${c.green("✔")} retain ledger ${c.dim(`${l.total} document(s) · ${retained} of ${l.corpus} memory file(s) retained`)}`);
+        if (l.duplicates.length) {
+          console.log(`  ${c.red("✖")} ${l.duplicates.length} note(s) stored under two document ids — recall can answer from the stale copy`);
+          for (const d of l.duplicates.slice(0, 3)) console.log(`      ${d.path.replace(homedir(), "~")}`);
+          if (l.duplicates.length > 3) console.log(`      ${c.dim(`…and ${l.duplicates.length - 3} more`)}`);
+          console.log(`      fix: keel retain-id --audit ${c.dim("names the copy to keep and the one to drop")}`);
+          problems += l.duplicates.length;
+        }
+        const strays = l.noncanonical.length + l.unaddressable.length;
+        if (strays) {
+          console.log(`  ${c.yellow("!")} ${strays} document id(s) are not what keel would derive — the next retain adds a copy`);
+          console.log(`      ${c.dim("re-retain under the canonical id, then delete the old document")}`);
+          console.log(`      fix: keel retain-id --audit`);
+        }
+        if (l.orphans.length) {
+          console.log(`  ${c.yellow("!")} ${l.orphans.length} document(s) name a file that no longer exists`);
+          console.log(`      ${c.dim("a deleted note, or a project directory that moved out from under the id")}`);
+        }
+        if (l.stale.length) {
+          console.log(`  ${c.yellow("!")} ${l.stale.length} file(s) changed after they were last retained ${c.dim("(by mtime — a hint, not proof)")}`);
+        }
       }
     }
   }
@@ -2019,6 +2322,8 @@ switch (cmd) {
     break;
   case "recall":
     process.exit(cmdRecall(process.argv.slice(3)));
+  case "retain-id":
+    process.exit(await cmdRetainId(process.argv.slice(3)));
   case "doctor":
     await cmdDoctor();
     break;
@@ -2036,6 +2341,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel status    what is wired            ${c.dim("(default)")}
   keel log       what you've been doing   ${c.dim("--days N [--json]")}
   keel recall    what memory would surface for a prompt  ${c.dim('"<prompt>" | --duplicates')}
+  keel retain-id the bank id for a memory file  ${c.dim("<path>... | --audit")}
   keel setup     interactive wiring         ${c.dim("--<adapter>-… flags, --unset memory|reflect")}
   keel settings  recommended posture, with reasons  ${c.dim("--list to read without applying")}
   keel doctor    verify; exit 1 on problems
