@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KEEL = join(HERE, "..", "bin", "keel");
 const RECALL_HOOK = join(HERE, "..", "hooks", "memory-recall.mjs");
+const CREDSCAN_HOOK = join(HERE, "..", "hooks", "credential-scan.mjs");
 
 /**
  * A temp world: config dir with the memory adapter wired, stub CLIs on PATH.
@@ -190,6 +191,9 @@ describe("doctor runs the recall hook instead of assuming it", () => {
     mkdirSync(bin, { recursive: true });
     mkdirSync(join(w.root, "broken", "hooks"));
     copyFileSync(KEEL, join(bin, "keel"));
+    // Only the recall hook is broken here, so the other probed hook is copied
+    // intact — otherwise this test would pass on the wrong failure.
+    copyFileSync(CREDSCAN_HOOK, join(w.root, "broken", "hooks", "credential-scan.mjs"));
     writeFileSync(join(w.root, "broken", "hooks", "memory-recall.mjs"), "throw new ReferenceError('nope is not defined');\n");
     const r = spawnSync(process.execPath, [join(bin, "keel"), "doctor"], {
       encoding: "utf-8",
@@ -230,10 +234,12 @@ describe("doctor checks which keel is running", () => {
       copies[v] = join(cache, v, "bin", "keel");
       copyFileSync(KEEL, copies[v]);
       chmodSync(copies[v], 0o755);
-      // A real install ships the hooks beside the CLI, and doctor runs one of
-      // them. A copy without them is a broken install, which is its own test.
+      // A real install ships the hooks beside the CLI, and doctor runs the ones
+      // that fail silent. A copy without them is a broken install, which is its
+      // own test.
       mkdirSync(join(cache, v, "hooks"));
       copyFileSync(RECALL_HOOK, join(cache, v, "hooks", "memory-recall.mjs"));
+      copyFileSync(CREDSCAN_HOOK, join(cache, v, "hooks", "credential-scan.mjs"));
     }
     writeFileSync(
       join(w.cfg, "plugins", "installed_plugins.json"),

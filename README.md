@@ -57,7 +57,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
+| **`keel`** | enabled | Security guard, ingest boundary, credential scan, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 | **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across the machines you point at the same bank. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
 
@@ -112,6 +112,34 @@ wholesale — editing it there isn't a real escape hatch. Yours lives at
 checked first and winning outright. A block tells you that file's path and the shape to write. An escape
 hatch documented only in the source isn't one. `KEEL_GUARD_OFF=1` still disables
 the guard entirely.
+
+### Credential scan
+
+The security guard's model is *a secret is a file at a known path, and the danger is a
+command that moves it*. That model has a hole, and it cost a real exposure on this
+machine: `ssh <nas> "midclt call mail.config"` returned a TrueNAS appliance's SendGrid
+API key in plaintext, because the key was a value in someone else's datastore with no
+path at all, and the danger was a command that **printed** it. Whether that command
+returns a credential depends on the remote machine's state, not on the command text, so
+nothing on the `PreToolUse` side could have caught it.
+
+So keel watches the other side too. A `PostToolUse` hook scans `Bash` and `Read` output
+for **vendor-prefixed** credential shapes — `SG.`, `ghp_`, `github_pat_`, `sk-ant-`,
+`AKIA`, `xox[bap]-`, `AIza`, `glpat-`, `npm_`, `dop_v1_`, `sk_live_`, `hf_`, PEM private
+key blocks, JWTs, and URLs carrying an inline password.
+
+**It cannot redact and it cannot prevent** — by `PostToolUse` the bytes are already in
+context, and nothing at that position can change it. What it does is turn a silent,
+permanent exposure into a known one while rotation is still cheap: it names the vendor,
+tells you to rotate, and records the event — shape and origin, never the value — so the
+to-do outlives the session. `keel log --security` lists them.
+
+Prefixed shapes only, deliberately. Generic high-entropy detection is the only way to
+catch an unprefixed secret and is also where every false positive lives (commit SHAs,
+digests, UUIDs, base64 blobs); a guard that cries wolf is a guard you switch off. Vendor
+examples and placeholders are filtered for the same reason. `KEEL_CREDSCAN_OFF=1`
+disables it, and `keel doctor` runs the hook against a synthetic credential so a broken
+scanner is a reported problem rather than a quiet one.
 
 ### Activity log
 
@@ -222,6 +250,7 @@ you:
 ```
 keel status    what's active, what's optional, what each option costs   (read-only)
 keel log       your activity records; --json feeds the week skill       (read-only)
+               --security lists guard decisions and credential exposures
 keel doctor    verify prerequisites; exit 1 on problems                 (read-only)
 keel settings  recommended posture, each rule explained and linked
                (--list reads without applying; nothing is written

@@ -61,6 +61,27 @@ import Base from "../layouts/Base.astro";
           switch.</p>
         </div>
         <div class="card">
+          <h3 id="credscan">credential scan</h3>
+          <p>The guard's model is <em>a secret is a file at a known path</em>. A real
+          exposure here (2026-09-17) had no path: a <code>midclt call mail.config</code>
+          over <code>ssh</code> returned an appliance's SendGrid key in plaintext,
+          because the danger was a command that <strong>printed</strong> a credential
+          rather than one that moved a file — and whether it does depends on the remote
+          machine's state, not the command text. So a <code>PostToolUse</code> hook
+          scans <code>Bash</code> and <code>Read</code> output for vendor-prefixed
+          shapes (<code>SG.</code>, <code>ghp_</code>, <code>sk-ant-</code>,
+          <code>AKIA</code>, <code>AIza</code>, PEM blocks, JWTs, URLs with an inline
+          password). It <strong>cannot redact and cannot prevent</strong> — at
+          <code>PostToolUse</code> the bytes are already in context, and nothing there
+          can be — so the claim is only this: it names the vendor, says rotate, and
+          records the shape and origin (never the value) so the to-do outlives the
+          session. <code>keel log --security</code> reads them back. Prefixed shapes
+          only; generic entropy detection is where the false positives live, and a
+          guard that cries wolf gets switched off. <code>keel doctor</code> fires it at
+          a synthetic credential, so a broken scanner is a reported problem.
+          Off switch <code>KEEL_CREDSCAN_OFF=1</code>.</p>
+        </div>
+        <div class="card">
           <h3 id="trailers">commit hygiene</h3>
           <p>Blocks unwanted attribution trailers in commit messages
           (<code>KEEL_BLOCKED_TRAILERS</code>; off switch <code>KEEL_TRAILERS_OFF=1</code>).
