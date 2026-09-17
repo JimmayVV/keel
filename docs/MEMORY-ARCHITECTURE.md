@@ -196,6 +196,55 @@ derived-facts files, *propose-only* for anything the user wrote by hand
 *untouchable* for config, hooks, and code. An autonomous writer with uniform
 write access is how a fumbled extraction becomes a rewritten identity.
 
+### The one part of retain keel owns: the address
+
+keel extracts nothing and sends nothing. But a retained document is addressed by
+an id, and the id decides whether re-sending a file **updates** that document or
+adds a second copy beside it. Recall then has two answers to one question and no
+rule for picking, so it can return the older one.
+
+That convention started as a sentence in a `CLAUDE.md` — instruction text, which
+a model follows approximately. Seven weeks of that, measured on 2026-09-17: 80
+documents under six id shapes, three notes under two ids each with the losing
+copy months stale, 24 ids a re-retain would have duplicated rather than updated,
+and four typed by hand that no retain could ever address again.
+
+So the id is computed:
+
+```
+keel retain-id <path>
+```
+
+Two forms, both independent of `$HOME` and of the username, because the whole
+property being bought is that two machines pointed at one bank derive one id for
+one note:
+
+| File | Id |
+|---|---|
+| `<config dir>/projects/<slug>/memory/x.md` | `projects/<slug>/memory/x.md` |
+| anything else under `$HOME` | its path relative to `$HOME` |
+
+A path outside `$HOME` is refused rather than guessed — keyed on an absolute
+path, an id means a different thing on the next box, which is the failure being
+ended.
+
+`keel retain-id --audit` compares the bank against disk, and `keel doctor`
+reports the same in summary: notes stored under two ids (a problem — it is the
+one that returns a wrong answer rather than merely wasting a document), ids that
+are not what keel would derive, documents whose file is gone, files changed
+since they were last retained, and files never retained. Never-retained is not a
+problem: a bank created after the notes is the normal case, and backfilling is
+the user's call. `KEEL_RETAIN_CHECK_OFF=1` turns the check off.
+
+Neither command writes anything, to the bank or to disk. The convention that
+tells a session to use them ships as a skill with `keel-reflect`, so a machine
+gets it by installing the plugin rather than by inheriting someone's `CLAUDE.md`.
+
+Freshness is judged by modification time. The retained text is a session's
+summary of a file rather than the file's bytes, so the document's
+`content_hash` cannot be recomputed from disk — "changed since retained" is a
+hint worth checking, not proof of drift, and is reported that way.
+
 ### It runs where a log lives
 
 Retain does not need to be reachable. It needs to reach a log — and the activity
@@ -288,17 +337,24 @@ state.
 - Two engine bridges — `keel-memory` (Basic Memory, local) and `keel-reflect`
   (Hindsight over http; URL and bank from `settings.json`, bank created by
   `keel setup`, health and bank checked by `keel doctor`)
+- Retain addressing — `keel retain-id` derives a document id from a path, so the
+  id is computed rather than remembered; `keel retain-id --audit` and `keel
+  doctor` compare the bank against disk. Addressing and auditing only: keel
+  neither extracts facts nor sends them.
 
 **Not built:**
 
-- **Retain. There is no fact-extraction step at all.** This is the real gap.
+- **Retain. There is no fact-extraction step at all.** This is the real gap —
+  keel addresses and audits retained documents, but nothing in keel decides what
+  is worth retaining or sends it.
 - Vocabulary-gap recall — `daily` and `day` do not match; closing that needs
   embeddings, which need a service in the keystroke path, which the rule above
   forbids
 - The driver interface above — currently one hard-coded adapter shape
 
 The honest summary: keel does recall's substrate well and does not retain at
-all. Everything you remember today, you wrote down yourself.
+all. Everything you remember today, you wrote down yourself — keel now makes
+sure it went in under an address it can be found and replaced at.
 
 ---
 
