@@ -26,7 +26,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, renameSync, statSync, lstatSync, chmodSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
@@ -2004,6 +2004,101 @@ async function ask1(rl, prompt) {
   }
 }
 
+/**
+ * `keel send` — put a local file on another machine's inbox, so a remote
+ * session can read it by path.
+ *
+ * A terminal carries text, so an image pasted into a session running over SSH
+ * never reaches the agent: the clipboard is on one machine and the process is
+ * on the other. The file has to travel out-of-band. Tailscale already does that
+ * (Taildrop), already runs on both ends, and already handles NAT, rotation and
+ * identity — so this shells out to it rather than growing a transport.
+ *
+ * The ladder exists because "set up Tailscale first" is not an answer when you
+ * are trying to send one screenshot. Taildrop when the tailnet is up, scp when
+ * it isn't but SSH works, and printed instructions when neither does. Each rung
+ * says which one it used; a silent success over an unexpected path is how you
+ * end up debugging the wrong machine.
+ */
+function cmdSend(args) {
+  const rest = args.filter((a) => a !== "--");
+  const file = rest[0];
+  const target = rest[1] ?? process.env.KEEL_INBOX_TARGET?.trim();
+
+  if (!file || file === "--help" || file === "-h") {
+    console.log(`
+  usage: keel send <file> [target]    ${c.dim("target: a tailnet node or ssh host")}
+
+  ${c.dim("Falls back Taildrop → scp → printed instructions. Set KEEL_INBOX_TARGET")}
+  ${c.dim("to skip the argument. Files land in the target's ~/inbox.")}
+`);
+    return file ? 0 : 1;
+  }
+  if (!existsSync(file)) {
+    console.log(`  ${c.yellow("!")} no such file: ${file}`);
+    return 1;
+  }
+  if (!target) {
+    console.log(`  ${c.yellow("!")} no target given, and KEEL_INBOX_TARGET isn't set`);
+    console.log(`      ${c.dim("keel send <file> <tailnet-node-or-ssh-host>")}`);
+    return 1;
+  }
+
+  const abs = resolve(file);
+
+  // One wall-clock budget for the whole ladder. Measured on real hardware:
+  // an ssh rung with no host-key policy waits ~70s for an answer nobody can
+  // give, so every rung is bounded by us, not by the tool's own flags.
+  const budget = Number(process.env.KEEL_SEND_DEADLINE_MS);
+  const deadline = Date.now() + (Number.isFinite(budget) && budget > 0 ? budget : 45000);
+  const left = () => deadline - Date.now();
+
+  if (have("tailscale") && left() > 2000) {
+    const r = spawnSync("tailscale", ["file", "cp", "--", abs, `${target}:`], {
+      encoding: "utf-8",
+      timeout: Math.min(20000, left()),
+    });
+    if ((r.status ?? 1) === 0) {
+      console.log(`  ${c.green("✔")} sent to ${target} via Taildrop ${c.dim("— arrives in ~/inbox on the next prompt")}`);
+      return 0;
+    }
+    const why = (r.stderr || "").trim().split("\n")[0];
+    console.log(`  ${c.dim(`Taildrop didn't take it${why ? `: ${why}` : ""}`)}`);
+  }
+
+  // StrictHostKeyChecking=accept-new is not a convenience: without it, a host
+  // this machine has not seen stops on an interactive prompt that a background
+  // run can never answer, and BatchMode alone did not prevent it here.
+  const SSH_OPTS = [
+    "-o", "BatchMode=yes",
+    "-o", "StrictHostKeyChecking=accept-new",
+    "-o", "ConnectTimeout=6",
+  ];
+
+  if (have("scp") && left() > 2000) {
+    spawnSync("ssh", [...SSH_OPTS, target, "mkdir -p inbox"], {
+      encoding: "utf-8",
+      timeout: Math.min(8000, left()),
+    });
+    const r = spawnSync("scp", [...SSH_OPTS, abs, `${target}:inbox/`], {
+      encoding: "utf-8",
+      timeout: Math.min(30000, Math.max(left(), 2000)),
+    });
+    if ((r.status ?? 1) === 0) {
+      console.log(`  ${c.green("✔")} sent to ${target} over SSH ${c.dim("— ~/inbox/" + basename(abs))}`);
+      return 0;
+    }
+    const why = (r.stderr || "").trim().split("\n")[0];
+    console.log(`  ${c.dim(`scp didn't take it${why ? `: ${why}` : ""}`)}`);
+  }
+
+  console.log(`  ${c.yellow("!")} couldn't reach ${target} by Taildrop or ssh. The file is still here:`);
+  console.log(`      ${abs}`);
+  console.log(`      ${c.dim(`tailscale file cp -- "${abs}" ${target}:`)}`);
+  console.log(`      ${c.dim(`scp "${abs}" ${target}:inbox/`)}`);
+  return 1;
+}
+
 // ── entry ───────────────────────────────────────────────────────────────────
 const cmd = process.argv[2] ?? "status";
 switch (cmd) {
@@ -2029,6 +2124,8 @@ switch (cmd) {
     process.exit(await cmdMigrate(process.argv.slice(3)));
   case "link":
     process.exit(cmdLink(process.argv.slice(3)));
+  case "send":
+    process.exit(cmdSend(process.argv.slice(3)));
   default:
     console.log(`
 ${c.bold("keel")} — configures third-party memory backends for Claude Code
@@ -2043,6 +2140,7 @@ ${c.bold("keel")} — configures third-party memory backends for Claude Code
   keel migrate   restore marketplaces + plugins from a config a reset moved aside
                  ${c.dim("--all | --pick | --none, --from DIR, --dry-run")}
   keel link      put keel on your PATH  ${c.dim("--dir DIR (default ~/.local/bin)")}
+  keel send      put a file on another machine's inbox  ${c.dim("<file> [target]")}
 
 keel owns no runtime. It configures other people's tools and gets out of the way.
 `);
