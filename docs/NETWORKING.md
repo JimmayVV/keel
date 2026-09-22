@@ -100,8 +100,15 @@ which under WSL is the *Windows* machine name, so two boxes can collide. The
 collision is invisible until you compare logs and find a month of work attributed
 to the wrong machine.
 
-It lives in `settings.local.json`, which is machine-local by convention — the
-right home for anything that differs per box, including `KEEL_MEMORY_HOME`.
+It lives in `settings.json`, beside `KEEL_MEMORY_HOME`, because that is the only
+user-level settings file Claude Code reads. `settings.local.json` is a *project*
+file ([settings docs](https://code.claude.com/docs/en/settings)): a copy in the
+config directory is loaded only for a session started in `~`. keel wrote both
+keys there until 2026-09, and sessions elsewhere never saw them. `keel doctor`
+flags keys still stranded there; `keel setup` moves them, backing up both files.
+
+The cost: if you sync `settings.json` between machines by hand, these two lines
+differ per box. No documented user-level file keeps them out of it.
 
 ---
 
