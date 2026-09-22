@@ -226,8 +226,8 @@ keel doctor    verify prerequisites; exit 1 on problems                 (read-on
 keel settings  recommended posture, each rule explained and linked
                (--list reads without applying; nothing is written
                 without a yes, and it only ever appends)
-keel setup     names this machine and wires the adapters — portable keys
-               to settings.json, machine-specific ones to settings.local.json
+keel setup     names this machine and wires the adapters, writing to
+               settings.json, the one user-level file Claude Code reads
                (--device <name> sets the activity-log device non-interactively)
 keel update    pull the latest keel + any installed bridge plugins
                (the update slice of install.sh; the script stays the
@@ -304,8 +304,8 @@ none. They are not connected and keel has no concept that spans them.
 
 keel used to ship a git-repo sync for memory and instructions. It was removed:
 once an adapter provides the sharing, a second sharing mechanism is two stores
-with no rule for which one wins. One value still differs per machine — the
-device name in `settings.local.json` — and that is the whole of it.
+with no rule for which one wins. Two `settings.json` lines still differ per
+machine — the device name and the notes path — and that is the whole of it.
 
 There is deliberately **no bridge, no export, and no sanitiser.** An earlier design kept
 features and data in one repo, which forced an elaborate gated export — with a scanner that

@@ -258,7 +258,8 @@ re-training.
 - Decided facts live in the notes store → the adapter carries them to every
   machine on the network.
 - Machine facts live in auto-memory → correctly stay behind.
-- Machine identity lives in `settings.local.json` → never conflicts.
+- Machine identity is one `KEEL_DEVICE` line in `settings.json` → the line to
+  leave alone if you sync that file by hand ([NETWORKING](NETWORKING.md#machine-identity)).
 - Paths are convention, not configuration → `~/personal/<name>` on every
   personal box, so a note that points at a project is true everywhere —
   including on a machine that hasn't cloned it yet, where the registry entry
@@ -311,7 +312,7 @@ All documented, per [DOCUMENTED-SURFACES.md](DOCUMENTED-SURFACES.md):
 | `UserPromptSubmit` + `hookSpecificOutput.additionalContext` | query recall |
 | Auto memory directory | fact substrate |
 | `.mcp.json` | engine bridges |
-| `settings.json` / `settings.local.json` | config, machine-local values |
+| `settings.json` | config, including the two machine-specific keys |
 
 Nothing here reads a transcript file. Transcript JSONL is explicitly forbidden —
 undocumented and actively churned — which is precisely why retain consumes

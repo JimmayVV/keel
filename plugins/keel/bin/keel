@@ -34,7 +34,17 @@ import { stdin, stdout } from "node:process";
 
 const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
 const SETTINGS = join(CONFIG_DIR, "settings.json");
-const LOCAL_SETTINGS = join(CONFIG_DIR, "settings.local.json");
+/**
+ * Not a file Claude Code reads for user settings. The documented user scope is
+ * settings.json alone; settings.local.json is a PROJECT file, read from
+ * <project>/.claude/ (https://code.claude.com/docs/en/settings). So with the
+ * default config dir this path is loaded only for a session started in ~.
+ *
+ * keel setup wrote KEEL_MEMORY_HOME and KEEL_DEVICE here from 2026-07-27, and
+ * sessions everywhere else ran without them while doctor, which merged this
+ * file in, reported all good. keel now reads it only to move those keys out.
+ */
+const IGNORED_LOCAL_SETTINGS = join(CONFIG_DIR, "settings.local.json");
 
 /**
  * XDG base directories, with the spec's defaults.
@@ -55,15 +65,16 @@ const DEFAULT_NOTES_DIR = join(XDG_DATA, "keel", "notes");
 const DEFAULT_BACKUP_DIR = join(XDG_STATE, "keel", "backups");
 
 /**
- * Keys keel manages, split by whether they survive a trip to another machine.
+ * Keys keel manages. All of them live in settings.json, the one user-scope
+ * file Claude Code reads.
  *
- * OWNED_KEYS mean the same thing on any machine and live in settings.json.
- * LOCAL_KEYS are absolute paths and machine identity — they differ per box by
- * definition, so they go to settings.local.json, which is gitignored by
- * convention and safe to keep out of any dotfiles repo you sync by hand.
+ * KEEL_MEMORY_HOME and KEEL_DEVICE differ per machine by definition, and once
+ * went to settings.local.json to keep them out of a settings.json synced
+ * between machines. No documented user-scope file does that job, so the cost
+ * is stated instead: sync settings.json by hand and these two lines differ
+ * per box.
  */
-const OWNED_KEYS = ["KEEL_HINDSIGHT_URL", "KEEL_HINDSIGHT_BANK"];
-const LOCAL_KEYS = ["KEEL_MEMORY_HOME", "KEEL_DEVICE"];
+const OWNED_KEYS = ["KEEL_HINDSIGHT_URL", "KEEL_HINDSIGHT_BANK", "KEEL_MEMORY_HOME", "KEEL_DEVICE"];
 
 const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
@@ -112,13 +123,13 @@ function readSettings() {
 }
 
 /**
- * The env Claude Code actually sees: settings.local.json wins over settings.json,
- * which is what makes a machine-specific override an override rather than a
- * conflict. Read through this, never through readSettings alone, or doctor will
- * report a correctly-configured machine as unconfigured.
+ * The keel env a session sees: settings.json `env`, and nothing merged over it.
+ * This once layered settings.local.json on top, modelling an override Claude
+ * Code does not perform at user scope — which is how doctor stayed green on a
+ * machine whose sessions saw neither key keel had written there.
  */
 function effectiveEnv() {
-  return { ...(readSettings().env ?? {}), ...(readJson(LOCAL_SETTINGS).env ?? {}) };
+  return readSettings().env ?? {};
 }
 
 /**
@@ -127,6 +138,16 @@ function effectiveEnv() {
  * a guest in it.
  */
 const BACKED_UP = new Set(); // per-run: the backup must capture PRE-run state
+
+function backupOnce(path) {
+  // Once per run: cmdSetup writes twice (device, then memory home), and
+  // backing up before EVERY write meant the second backup captured keel's
+  // own first write — the genuine pre-run state was lost. Audit finding.
+  if (existsSync(path) && !BACKED_UP.has(path)) {
+    copyFileSync(path, `${path}.keel-backup`);
+    BACKED_UP.add(path);
+  }
+}
 
 function writeOwnedEnv(patch) {
   const settings = readSettings();
@@ -141,46 +162,53 @@ function writeOwnedEnv(patch) {
 
   if (JSON.stringify(settings) === before) return false;
 
-  if (existsSync(SETTINGS) && !BACKED_UP.has(SETTINGS)) {
-    // Once per run: cmdSetup writes twice (device, then memory home), and
-    // backing up before EVERY write meant the second backup captured keel's
-    // own first write — the genuine pre-run state was lost. Audit finding.
-    copyFileSync(SETTINGS, `${SETTINGS}.keel-backup`);
-    BACKED_UP.add(SETTINGS);
-  }
+  backupOnce(SETTINGS);
   mkdirSync(dirname(SETTINGS), { recursive: true });
   writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + "\n");
   return true;
 }
 
 /**
- * The same contract as writeOwnedEnv, against settings.local.json.
- *
- * This file is the reason two machines can share a config directory without
- * fighting: absolute paths and device identity live here, it is gitignored by
- * convention, and Claude Code layers it over settings.json. Before this existed
- * `keel setup` wrote a machine's home path into the synced file and every pull
- * conflicted on that line.
+ * keel keys in the ignored settings.local.json. `stranded` are missing from
+ * settings.json, so no session has them: the July-style setup. `shadowed` are
+ * set in both; sessions use the settings.json value, so the copy is inert.
  */
-function writeLocalEnv(patch) {
-  const settings = readJson(LOCAL_SETTINGS);
-  const before = JSON.stringify(settings);
-
-  settings.env = { ...(settings.env ?? {}) };
-  for (const [k, v] of Object.entries(patch)) {
-    if (!LOCAL_KEYS.includes(k)) throw new Error(`keel does not own the local key ${k}`);
-    if (v === null) delete settings.env[k];
-    else settings.env[k] = v;
+function localKeys() {
+  const live = effectiveEnv();
+  const stranded = {};
+  const shadowed = [];
+  for (const [k, v] of Object.entries(readJson(IGNORED_LOCAL_SETTINGS).env ?? {})) {
+    if (!OWNED_KEYS.includes(k)) continue;
+    if (k in live) shadowed.push(k);
+    else stranded[k] = v;
   }
+  return { stranded, shadowed };
+}
 
-  if (JSON.stringify(settings) === before) return false;
+/**
+ * Move stranded keys into settings.json and out of settings.local.json. Never
+ * overwrites: a key already set in settings.json is shadowed, not stranded,
+ * and stays where it is. Both files are backed up before their first write.
+ */
+function moveStrandedKeys() {
+  const { stranded } = localKeys();
+  if (!Object.keys(stranded).length) return {};
+  writeOwnedEnv(stranded);
+  dropIgnoredLocal(Object.keys(stranded));
+  return stranded;
+}
 
-  if (existsSync(LOCAL_SETTINGS) && !BACKED_UP.has(LOCAL_SETTINGS)) {
-    copyFileSync(LOCAL_SETTINGS, `${LOCAL_SETTINGS}.keel-backup`);
-    BACKED_UP.add(LOCAL_SETTINGS);
-  }
-  mkdirSync(dirname(LOCAL_SETTINGS), { recursive: true });
-  writeFileSync(LOCAL_SETTINGS, JSON.stringify(settings, null, 2) + "\n");
+/** Delete keel keys from settings.local.json, leaving the rest of it alone. */
+function dropIgnoredLocal(keys) {
+  const settings = readJson(IGNORED_LOCAL_SETTINGS);
+  const env = { ...(settings.env ?? {}) };
+  const hit = keys.filter((k) => k in env);
+  if (!hit.length) return false;
+  for (const k of hit) delete env[k];
+  if (Object.keys(env).length) settings.env = env;
+  else delete settings.env;
+  backupOnce(IGNORED_LOCAL_SETTINGS);
+  writeFileSync(IGNORED_LOCAL_SETTINGS, JSON.stringify(settings, null, 2) + "\n");
   return true;
 }
 
@@ -394,13 +422,15 @@ const ADAPTERS = {
       // documented registration (`project add <name> <dir>`) under a name
       // that DODGES the phantom is what actually produces a working store.
       if (!have("uvx")) return `notes dir created at ${v} — install uv, then re-run setup to register the project`;
-      const add = spawnSync("uvx", ["basic-memory", "project", "add", "keel", dir], { encoding: "utf-8", timeout: 30000 });
+      spawnSync("uvx", ["basic-memory", "project", "add", "keel", dir], { encoding: "utf-8", timeout: 30000 });
       spawnSync("uvx", ["basic-memory", "project", "default", "keel"], { encoding: "utf-8", timeout: 20000 });
-      const out = `${add.stdout ?? ""}${add.stderr ?? ""}`;
-      const registered = /added successfully/i.test(out) || /already exists/i.test(out);
-      return registered
-        ? `notes ready at ${v} · registered as Basic Memory project "keel"`
-        : `notes dir created, but registration failed — run: uvx basic-memory project add keel '${dir}' && uvx basic-memory project default keel`;
+      // Ask afterwards instead of reading add's output: "already exists" also
+      // comes back when a project named keel points at some OTHER directory,
+      // which this used to report as registered. doctor asks the same question.
+      const drift = basicMemoryMappingDrift(v);
+      if (drift === null) return `notes ready at ${v} · registered as Basic Memory project "keel"`;
+      if (drift.unverified) return `notes dir created at ${v} · registration unverified (${drift.unverified})`;
+      return `notes dir created, but ${drift}`;
     },
   },
   reflect: {
@@ -808,6 +838,18 @@ async function cmdSetup(argv) {
   try {
     console.log(`\n${c.bold("keel setup")} — configures adapters. Nothing is installed silently.\n`);
 
+    // Keys an older setup wrote to settings.local.json, where no session
+    // outside ~ read them. This is the repair doctor points at.
+    {
+      const moved = moveStrandedKeys();
+      if (Object.keys(moved).length) {
+        console.log(`${c.bold("Moved to settings.json")}`);
+        for (const [k, v] of Object.entries(moved)) console.log(`  ${c.green("✔")} ${k} ${c.dim(v)}`);
+        console.log(`  ${c.dim("settings.local.json is not read for user settings,")}`);
+        console.log(`  ${c.dim("so sessions never saw these. Previous files: *.keel-backup")}\n`);
+      }
+    }
+
     /**
      * Device name first, because the activity log is already writing without it.
      *
@@ -822,15 +864,15 @@ async function cmdSetup(argv) {
       if (current) {
         console.log(`${c.bold("This machine")}\n  ${c.green("✔")} device "${current}"\n`);
       } else if (flags["device"]) {
-        writeLocalEnv({ KEEL_DEVICE: flags["device"] });
+        writeOwnedEnv({ KEEL_DEVICE: flags["device"] });
         console.log(`${c.bold("This machine")}\n  ${c.green("✔")} device "${flags["device"]}"\n`);
       } else if (interactive) {
         console.log(`${c.bold("This machine")}`);
         console.log(`  ${c.dim("Names this machine in the activity log. Defaults to the hostname,")}`);
         console.log(`  ${c.dim("which on WSL is the Windows machine name and can collide.")}`);
         const name = (await rl.question(`  Name for this machine? ${c.dim(`[${fallback}]`)} `)).trim() || fallback;
-        writeLocalEnv({ KEEL_DEVICE: name });
-        console.log(`  ${c.green("✔")} device "${name}" ${c.dim("→ settings.local.json")}\n`);
+        writeOwnedEnv({ KEEL_DEVICE: name });
+        console.log(`  ${c.green("✔")} device "${name}" ${c.dim("→ settings.json")}\n`);
       } else {
         console.log(`${c.bold("This machine")}`);
         console.log(`  ${c.dim(`device not set — falling back to hostname "${fallback}"`)}`);
@@ -857,10 +899,10 @@ async function cmdSetup(argv) {
       if (unset) {
         const keys = [a.envKey, ...(a.extra ?? []).map((x) => x.envKey)];
         let removed = false;
-        for (const k of keys) {
-          const write = LOCAL_KEYS.includes(k) ? writeLocalEnv : writeOwnedEnv;
-          removed = write({ [k]: null }) || removed;
-        }
+        for (const k of keys) removed = writeOwnedEnv({ [k]: null }) || removed;
+        // An inert copy left in settings.local.json would read as stranded
+        // the moment settings.json lost the key, and setup would move it back.
+        removed = dropIgnoredLocal(keys) || removed;
         console.log(`  ${c.green("✔")} ${removed ? `removed ${keys.join(", ")}` : "nothing was set"}`);
         const ps = pluginState(a.plugin);
         if (ps?.installed) console.log(`  ${c.dim(`the plugin stays until you say so: claude plugin uninstall ${a.plugin}@keel`)}`);
@@ -933,10 +975,8 @@ async function cmdSetup(argv) {
         continue;
       }
 
-      let changed = (LOCAL_KEYS.includes(a.envKey) ? writeLocalEnv : writeOwnedEnv)({ [a.envKey]: value });
-      for (const [k, v] of Object.entries(extras)) {
-        changed = (LOCAL_KEYS.includes(k) ? writeLocalEnv : writeOwnedEnv)({ [k]: v }) || changed;
-      }
+      let changed = writeOwnedEnv({ [a.envKey]: value });
+      for (const [k, v] of Object.entries(extras)) changed = writeOwnedEnv({ [k]: v }) || changed;
       const note = await a.postSetup(value);
       console.log(`  ${c.green("✔")} ${changed ? "written to settings.json" : "already set"}${note ? ` · ${note}` : ""}`);
       // The hint has to match reality: `enable` only works on a plugin that is
@@ -966,6 +1006,25 @@ async function cmdDoctor() {
   if (!existsSync(SETTINGS)) {
     console.log(`  ${c.yellow("○")} no settings.json at ${SETTINGS} — run \`keel setup\``);
     problems++;
+  }
+
+  // What a session sees is settings.json alone. A key only in settings.local.json
+  // is set on disk and absent in every session outside ~; doctor used to merge
+  // that file in and call it configured, for two months on the machine that
+  // found this.
+  {
+    const { stranded, shadowed } = localKeys();
+    const keys = Object.keys(stranded);
+    if (keys.length) {
+      console.log(`  ${c.red("✖")} only in settings.local.json, which sessions don't read:`);
+      console.log(`      ${keys.join(", ")}`);
+      console.log(`      fix: keel setup ${c.dim("(moves them to settings.json, backing up both)")}`);
+      problems++;
+    }
+    if (shadowed.length) {
+      console.log(`  ${c.dim("○")} unread copy in settings.local.json ${c.dim(`(${shadowed.join(", ")})`)}`);
+      console.log(`      ${c.dim("settings.json holds the live value; delete the copy when convenient")}`);
+    }
   }
 
   // The activity log is the reason most people run keel, and it is the one part
