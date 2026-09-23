@@ -72,8 +72,11 @@ path — a poisoned web page or ticket body telling the agent to exfiltrate, ins
 approve something — as advisory context, not enforcement. `KEEL_INGEST_OFF=1` disables it. It also flags zero-width characters and bidirectional overrides — the standard
 ways to hide instructions from human review.
 
-Strictly read-only: it never blocks a call and never mutates a result. A guard that can
-break your workflow is a guard you'll eventually disable.
+It never blocks a call and never mutates a result. A guard that can
+break your workflow is a guard you'll eventually disable. Its one write is an
+audit line when the hidden-character check fires — the source and which class of
+character, never the content — so `keel log --security` and `keel doctor` can count
+how often outside content arrives obfuscated.
 
 ### Security guard
 

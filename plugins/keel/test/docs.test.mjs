@@ -193,3 +193,102 @@ test("no site page carries a stale version token", () => {
     }
   }
 });
+
+// A universal claim about protection must name the file that enforces it.
+//
+// The phrase pin above catches the four sentences one audit caught, and nothing
+// else. It is a should-list, so the next widened claim will be worded
+// differently and sail past: philosophy.astro's "Every part has an off switch"
+// is that exact reword of the pinned "every guard has an off-switch, every
+// write has an undo", and it did sail past.
+//
+// So this is a checker instead. It flags every WIDENING claim — a universal
+// quantifier attached to a protection verb — and demands a row below naming the
+// file that makes it true. Narrowing claims ("never blocks", "cannot redact",
+// "prefixed shapes only") are skipped: they are limits, and a wrong limit
+// understates, which is the safe direction and the register CLAUDE.md asks for.
+//
+// Rewording a claim breaks its row. That is the point, not a cost — a reword is
+// exactly when the scope quietly widens, and it is the failure this replaces.
+const WIDE = "(?:every|everything|all|any|always|anything)";
+const PROTECT =
+  "(?:(?:block|prevent|stop|catch|protect|ensure|guard|cover|secure|redact|detect|scan|shield|undo|exit|fail)(?:s|es|ed|ing)?|off[- ]switch(?:es)?)";
+const WIDENING = new RegExp(
+  `\\b${WIDE}\\b[^.!?]{0,70}\\b${PROTECT}\\b|\\b${PROTECT}\\b[^.!?]{0,70}\\b${WIDE}\\b`,
+  "i",
+);
+const LIMIT = /\b(?:never|cannot|can't|not|no|only|without)\b/i;
+
+// excerpt → the file that makes the claim true. The file must exist; a claim
+// citing a deleted mechanism is the failure docs.test.mjs already guards for.
+const CLAIMS = [
+  ["Everything it adds rides on surfaces Anthropic documents", "docs/DOCUMENTED-SURFACES.md"],
+  ["blocks every mutating tool", "plugins/keel/hooks/security-guard.mjs"],
+  ["where every false positive lives", "plugins/keel/hooks/credential-scan.mjs"],
+  ["Fails **open** on any internal error", "plugins/keel/hooks/commit-trailer-guard.mjs"],
+  ["prints the one-line undo before doing anything", "scripts/install.sh"],
+  ["Everything keel contributes", "plugins/keel/hooks/hooks.json"],
+  ["fails open** on anything unexpected", "plugins/keel/test/guards.test.mjs"],
+  ["Every part has an off switch", "plugins/keel/test/guards.test.mjs"],
+  ["cover every skill keel grows next", "plugins/keel/skills/guide/SKILL.md"],
+  ["Every explanation keeps the exit visible", "plugins/keel/skills/guide/SKILL.md"],
+  ["Fails closed on a broken policy for every mutating tool", "plugins/keel/hooks/security-guard.mjs"],
+  ["Fails open on any internal error", "plugins/keel/hooks/commit-trailer-guard.mjs"],
+  ["Anything that fails silent on removal", "docs/adr/0001-admission-by-felt-need.md"],
+  ["Every guard has an off-switch", "plugins/keel/test/guards.test.mjs"],
+];
+
+/** The pages a reader meets keel through: the README and every plain page. */
+function claimPages() {
+  return [
+    join(root, "README.md"),
+    ...readdirSync(join(root, "site", "src", "pages")).map((f) =>
+      join(root, "site", "src", "pages", f),
+    ),
+  ];
+}
+
+/** Prose only: fenced blocks are transcripts, and tags are not sentences. */
+function sentences(text) {
+  return text
+    .replace(/^```[\s\S]*?^```/gm, " ")
+    .replace(/<[^>]+>/g, " ")
+    .split(/(?<=[.!?])\s+|\n\n+/)
+    .map((x) => x.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+test("every claim citing a mechanism cites one that exists", () => {
+  for (const [excerpt, mechanism] of CLAIMS) {
+    assert.ok(
+      existsSync(join(root, mechanism)),
+      `the claim "${excerpt}" cites ${mechanism}, which is not in the repo`,
+    );
+  }
+});
+
+test("a universal claim about protection names its mechanism", () => {
+  const unused = new Set(CLAIMS.map(([e]) => e));
+  for (const file of claimPages()) {
+    for (const sentence of sentences(readFileSync(file, "utf8"))) {
+      const hit = sentence.match(WIDENING);
+      if (!hit || LIMIT.test(hit[0])) continue;
+      const row = CLAIMS.find(([excerpt]) => sentence.includes(excerpt));
+      assert.ok(
+        row,
+        `${file.slice(root.length + 1)} makes an unlisted universal claim:\n` +
+          `    "${sentence.slice(0, 180)}"\n` +
+          `  Matched: "${hit[0]}"\n` +
+          `  Either scope it (name the mechanism's actual reach), or add a CLAIMS row\n` +
+          `  in docs.test.mjs pairing a distinctive excerpt with the file that enforces it.`,
+      );
+      unused.delete(row[0]);
+    }
+  }
+  assert.equal(
+    unused.size,
+    0,
+    `CLAIMS rows match nothing on the pages any more — the claim was reworded or ` +
+      `removed, so prune or update: ${[...unused].join(" | ")}`,
+  );
+});

@@ -1187,6 +1187,32 @@ async function cmdDoctor() {
   }
 
   /**
+   * Obfuscated ingest, counted.
+   *
+   * The ingest boundary marks every web and MCP result as data. It cannot tell
+   * whether a page is TRYING to give the agent orders — that needs a classifier,
+   * which is runtime, which ADR-0001 admits only on a need felt here at least
+   * once. This number is that need, made countable: hidden characters arriving
+   * from outside are the closest falsifiable proxy for someone hiding something.
+   * Zero forever means the parked grader was correctly parked.
+   */
+  {
+    let obfuscated = 0;
+    try {
+      const dir = activityDir();
+      for (const f of readdirSync(dir).filter((x) => x.startsWith("security-") && x.endsWith(".jsonl"))) {
+        for (const line of readFileSync(join(dir, f), "utf-8").split("\n")) {
+          if (line.includes('"obfuscated-ingest"')) obfuscated++;
+        }
+      }
+    } catch { /* no log yet is not a fault */ }
+    if (obfuscated) {
+      console.log(`  ${c.yellow("!")} ${obfuscated} obfuscated-ingest event(s) — fetched content carrying hidden characters`);
+      console.log(`      ${c.dim("keel log --security lists them; the content itself was never stored")}`);
+    }
+  }
+
+  /**
    * Which keel is actually running, and what the PATH entry resolves to.
    *
    * doctor reported "all good" on a machine whose CLI was fourteen commits

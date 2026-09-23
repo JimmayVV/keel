@@ -24,8 +24,10 @@ import Base from "../layouts/Base.astro";
           instructions</strong> — raising the cost of the indirect prompt-injection
           path (it is advisory context, not enforcement — and content fetched through
           plain <code>curl</code> in Bash is not covered). It also
-          flags zero-width characters and bidirectional overrides. Strictly read-only:
-          it never blocks a call, never mutates a result.</p>
+          flags zero-width characters and bidirectional overrides. It never blocks a
+          call, never mutates a result; its one write is an audit line when that check
+          fires — the source and the class of character, never the content — which
+          <code>keel log --security</code> lists and <code>keel doctor</code> counts.</p>
         </div>
         <div class="card">
           <h3 id="guard">security guard</h3>

@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const hook = (name) => join(HERE, "..", "hooks", name);
@@ -191,5 +192,50 @@ describe("trailer guard: heredoc data vs code (third audit)", () => {
     const body = ["cat > /tmp/demo.sh <<'SCRIPT'", `git commit -m "x`, "", `${TRAILER} <a@b>"`, "SCRIPT"].join("\n");
     const r = run("commit-trailer-guard.mjs", { tool_name: "Bash", tool_input: { command: body } });
     assert.equal(r.code, 0, "writing a script that mentions a trailer is not committing one");
+  });
+});
+
+/**
+ * The site says "Every part has an off switch". Each switch had its own test;
+ * nothing asserted the ROSTER, so a hook added tomorrow with no switch would
+ * make a published claim quietly false. This is the check that would notice.
+ */
+describe("the off-switch roster", () => {
+  test("every shipped hook reads a KEEL_*_OFF escape hatch", () => {
+    const dir = join(HERE, "..", "hooks");
+    const hooks = readdirSync(dir).filter((f) => f.endsWith(".mjs"));
+    assert.ok(hooks.length >= 5, `expected the hook roster, found ${hooks.length}`);
+    for (const f of hooks) {
+      const src = readFileSync(join(dir, f), "utf-8");
+      assert.match(
+        src,
+        /process\.env\.KEEL_[A-Z0-9_]+_OFF/,
+        `hooks/${f} has no KEEL_*_OFF switch, so "every part has an off switch" is false`,
+      );
+    }
+  });
+});
+
+/**
+ * A hook's source must stay greppable.
+ *
+ * untrusted-content.mjs spelled its zero-width character class literally, which
+ * put a NUL and a bidi override in the file. `file` called it binary data and
+ * plain `grep` skipped it silently — a session searching for its off switch found
+ * nothing and concluded it had none. Escapes read the same and cost nothing.
+ */
+describe("hook sources are plain text", () => {
+  test("no hook embeds a raw control or bidi character", () => {
+    const dir = join(HERE, "..", "hooks");
+    for (const f of readdirSync(dir).filter((x) => x.endsWith(".mjs"))) {
+      const src = readFileSync(join(dir, f), "utf-8");
+      const bad = src.match(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u200b-\u200f\u202a-\u202e\ufeff]/);
+      assert.equal(
+        bad,
+        null,
+        `hooks/${f} contains a raw control/bidi character (U+${bad?.[0]?.charCodeAt(0).toString(16).padStart(4, "0")}) \u2014 ` +
+          "write it as an escape, or grep and `file` treat the source as binary",
+      );
+    }
   });
 });
