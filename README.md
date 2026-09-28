@@ -57,7 +57,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and five skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair) |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and six skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair), `fleet` (put a repo on your CI and merge baseline) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 | **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across the machines you point at the same bank. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
 
