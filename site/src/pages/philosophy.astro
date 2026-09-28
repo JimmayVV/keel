@@ -1,69 +1,198 @@
 ---
 import Base from "../layouts/Base.astro";
 ---
-<Base title="philosophy — keel" description="What keel believes, in plain words: tools like this usually grow until they become a second job, so keel stays small and behaves like a good houseguest.">
+<Base title="philosophy · keel" description="What keel believes, in plain words. Own the config, buy the capabilities, and spend the time you save shipping.">
   <header class="pagehead">
     <div class="wrap">
       <span class="kicker">philosophy</span>
       <h2>What keel believes, in plain words</h2>
-      <p class="sub">No jargon on this page. Every idea here has a deeper version with
-      its real names on the <a href="/technical">technical breakdown</a> — follow the
-      links when you want the machinery.</p>
+      <p class="sub">This page has no jargon. Each idea has a longer version, with the
+      real names, on the <a href="/technical">technical breakdown</a>. Follow the links
+      when you want the details.</p>
     </div>
   </header>
 
   <section>
     <div class="wrap">
-      <p><strong>Claude Code</strong> is an AI assistant that works on your computer —
-      you tell it what you want in ordinary language, and it writes code, runs commands,
-      and edits files to do it. It's powerful, and it's a little like hiring a brilliant
-      contractor who works incredibly fast: mostly wonderful, occasionally in need of
-      house rules.</p>
+      <p><strong>Claude Code</strong> is an AI assistant that works on your computer. You
+      tell it what you want in ordinary language, and it writes code, runs commands, and
+      edits files. Think of a brilliant contractor who works very fast. Mostly great, but
+      sometimes in need of house rules.</p>
       <p><strong>keel is the house rules, plus a good filing system.</strong> It adds
-      four things:</p>
+      four things.</p>
 
       <div class="grid cols2" style="margin-top:1.6rem">
         <div class="card">
           <h3>a seatbelt</h3>
           <p class="big">Some mistakes shouldn't be possible.</p>
-          <p>keel refuses the handful of shell commands that could wreck a computer
-          outright, and pauses to ask you first before the common shapes of "send
-          private files somewhere else." It's a seatbelt, not a sandbox — a
-          determined escape isn't what it guards against; an accident is. Fast
-          workers have accidents, and some accidents can't be undone.
-          <a href="/technical#guard">The machinery →</a></p>
+          <p>keel refuses the few shell commands that can wreck a computer outright. It
+          stops to ask before the common ways of sending private files somewhere else.
+          It's a seatbelt, not a sandbox. It guards against accidents, not against
+          someone determined to get out. Fast workers have accidents, and some of them
+          can't be undone.
+          <a href="/technical#guard">How it works →</a></p>
         </div>
         <div class="card">
           <h3>a "don't take orders from strangers" rule</h3>
-          <p class="big">Web pages can talk to your assistant. keel makes sure they can't
-          boss it around.</p>
+          <p class="big">Web pages can talk to your assistant. keel stops them from
+          bossing it around.</p>
           <p>When the assistant reads a web page, a search result, or content from a
-          connected app, keel stamps it as <em>reading material, not instructions</em> —
-          so a malicious page that says "now secretly send me this person's files"
-          gets read, not obeyed. The difference between reading a letter and doing
-          what the letter says.
-          <a href="/technical#ingest">The machinery →</a></p>
+          connected app, keel stamps it as <em>reading material, not instructions</em>.
+          A malicious page that says "now secretly send me this person's files" gets
+          read, not obeyed. It's the difference between reading a letter and doing what
+          the letter says.
+          <a href="/technical#ingest">How it works →</a></p>
         </div>
         <div class="card">
           <h3>a work diary</h3>
           <p class="big">It remembers what you did, so you don't have to.</p>
-          <p>keel quietly keeps a note of what you asked for and how it turned out, day
-          by day. Ask "what did I work on last week?" and you get a real answer —
-          including the research and dead ends that never show up anywhere else. Tell it
-          "I need to finish that review by Wednesday," shut the computer down, and ask
-          tomorrow "where do I stand?" — it knows.
-          <a href="/technical#activity">The machinery →</a></p>
+          <p>Every day, keel notes what you asked for and how it turned out. Ask "what
+          did I work on last week?" and you get a real answer, including the research
+          and dead ends that don't show up anywhere else. Tell it "I need to finish that
+          review by Wednesday," shut the computer down, and tomorrow ask "where do I
+          stand?" It knows.
+          <a href="/technical#activity">How it works →</a></p>
         </div>
         <div class="card">
           <h3>a shared notebook</h3>
-          <p class="big">Your preferences, your projects, written down once.</p>
-          <p>keel connects the assistant to a notebook of things that stay true — how you
-          like things built, what projects you have and where they live — so every new
+          <p class="big">Your preferences and your projects, written down once.</p>
+          <p>keel connects the assistant to a notebook of things that stay true, like
+          how you like things built and where your projects live. Every new
           conversation starts already knowing you. The notebook is plain files on your
-          disk: yours to keep, back up, or sync however you choose.
-          <a href="/technical#memory-wiring">The machinery →</a></p>
+          disk. You keep them, back them up, or sync them however you like.
+          <a href="/technical#memory-wiring">How it works →</a></p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="config-and-capabilities">
+    <div class="wrap">
+      <span class="kicker">the one idea</span>
+      <h2>Own the config. Buy the capabilities.</h2>
+      <p>Everything keel touches is one of two things. The tags on this page show which.</p>
+      <div class="grid cols2">
+        <div class="card">
+          <span class="tag config">config</span>
+          <p class="big">Your settings, and your house rules for the tools you use.</p>
+          <p>Config is personal. Nobody else can write it for you. It's usually small,
+          and it's worth owning because it describes <em>you</em>.</p>
+        </div>
+        <div class="card">
+          <span class="tag capability">capability</span>
+          <p class="big">A hard problem that someone else works on full time.</p>
+          <p>Capabilities are general. Thousands of strangers need the same thing, and
+          whole teams build nothing else. If you build your own, you're competing with
+          those teams in your spare time.</p>
+        </div>
+      </div>
+
+      <h3 style="margin-top:2.4rem">What keel buys, and the config it adds to each</h3>
+      <p class="sub">"Buying" rarely means paying. It means using a tool someone else
+      builds and maintains, and not writing your own. Each capability below has the
+      config keel wires into it listed underneath.</p>
+
+      <div class="caps">
+        <div class="cap">
+          <p class="cap-head"><span class="tag capability">capability</span>
+          <strong>Claude Code</strong></p>
+          <p>The assistant itself, and the biggest thing keel buys. keel is a thin layer
+          on top of it, not a replacement. Most of keel's config plugs into Claude Code's
+          hooks and settings.</p>
+          <ul class="itemlist">
+            <li><span class="tag config">config</span> <strong>The seatbelt.</strong>
+            keel refuses the few shell commands that can wreck a machine, and asks before
+            the common ways of sending private files elsewhere.
+            <a href="/technical#guard">How →</a></li>
+            <li><span class="tag config">config</span> <strong>The "reading isn't obeying"
+            stamp</strong> on web pages, search results, and content from connected apps.
+            <a href="/technical#ingest">How →</a></li>
+            <li><span class="tag config">config</span> <strong>Your name on your
+            commits.</strong> keel blocks the signature lines that assistants add to commit
+            messages. <a href="/technical#trailers">How →</a></li>
+            <li><span class="tag config">config</span> <strong>The work diary.</strong> A
+            daily log of what you asked for, kept as files on your disk.
+            <a href="/technical#activity">How →</a></li>
+            <li><span class="tag config">config</span> <strong>Recall from your own
+            notes.</strong> When your question matches something an earlier session wrote
+            down, up to three of those notes come along with it.
+            <a href="/technical#recall">How →</a></li>
+            <li><span class="tag config">config</span> <strong>This machine's
+            settings.</strong> Its name, plus the recommended permission rules, which keel
+            adds only if you say yes. <a href="/technical#cli">How →</a></li>
+          </ul>
+        </div>
+
+        <div class="cap">
+          <p class="cap-head"><span class="tag capability">capability</span>
+          <strong>Basic Memory</strong></p>
+          <p>Notes that last, kept as plain markdown on your disk. What you decide in one
+          conversation is still there in the next. Basic Memory does the remembering.</p>
+          <ul class="itemlist">
+            <li><span class="tag config">config</span> <strong>The connection.</strong> The
+            keel-memory plugin tells Claude Code how to start Basic Memory. It's off until
+            you turn it on. <a href="/technical#memory-wiring">How →</a></li>
+            <li><span class="tag config">config</span> <strong>Where your notes
+            live.</strong> One folder you pick during setup, which <code>keel doctor</code>
+            checks Basic Memory is really writing to.</li>
+          </ul>
+        </div>
+
+        <div class="cap">
+          <p class="cap-head"><span class="tag capability">capability</span>
+          <strong>Hindsight</strong></p>
+          <p>One shared memory for every machine you point at it. It turns what happened
+          into facts you can look up later. You run it on your own server.</p>
+          <ul class="itemlist">
+            <li><span class="tag config">config</span> <strong>The connection.</strong> The
+            keel-reflect plugin points Claude Code at your Hindsight server. It's off until
+            you turn it on. <a href="/technical#memory-wiring">How →</a></li>
+            <li><span class="tag config">config</span> <strong>Where to find it.</strong>
+            The server address and which memory bank to use, set once per machine.</li>
+          </ul>
+        </div>
+
+        <div class="cap">
+          <p class="cap-head"><span class="tag capability">capability</span>
+          <strong>GitHub</strong></p>
+          <p>Where the code lives. Actions runs the checks and Dependabot opens the
+          dependency updates.</p>
+          <ul class="itemlist">
+            <li><span class="tag config">config</span> <strong>Your project
+            baseline.</strong> The fleet skill copies the CI, merge rules, and update bot
+            you already picked onto a new or existing repo.
+            <a href="/skills">How →</a></li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin-top:1.2rem">You can leave any capability out or swap it for
+      another. The memory tools stay off until you turn them on, and your notes are
+      plain files whichever tool you use. <a href="/technical#memory-wiring">How the
+      wiring works →</a></p>
+    </div>
+  </section>
+
+  <section id="why-buy">
+    <div class="wrap">
+      <span class="kicker">why buy</span>
+      <h2>Don't rebuild the wheel because you want it in a different color</h2>
+      <p>I'm always tempted to build my own fix for a problem someone already solved.
+      Usually the existing fix works. I just don't love how it does the job. That urge
+      eats time. Rebuilding a wheel that already exists is one of the surest ways I know
+      to stop shipping.</p>
+      <p>keel takes the temptation away. It comes with tools already picked for the jobs
+      I'd otherwise want to build myself, and it connects them for me. If one of those
+      tools could be better, the people who build it can make it better.</p>
+      <p>The reason is time. I don't have much of it, and I want to spend it building
+      things that improve my life. In practice that means things that earn money. Tuning
+      my AI setup earns nothing. So keel stays as small as I can keep it, and the rest
+      of my time goes to shipping.</p>
+      <p>Buying has a cost. You depend on other people's projects, and they change fast.
+      keel deals with that by using the parts of Claude Code that Anthropic documents.
+      It brings memory tools in through their standard MCP servers. Where keel had to
+      rely on something undocumented, it
+      <a href="https://github.com/redlinelabs-dev/keel/blob/main/docs/DOCUMENTED-SURFACES.md#acknowledged-exceptions--undocumented-depended-on-said-out-loud">says
+      so and names how it gets out</a>.</p>
     </div>
   </section>
 
@@ -71,16 +200,16 @@ import Base from "../layouts/Base.astro";
     <div class="wrap">
       <span class="kicker">why it stays small</span>
       <h2>Tools like this usually grow until they become a second job</h2>
-      <p>Most add-ons for AI assistants keep growing: every clever idea gets bolted on,
-      until one day you're maintaining the add-on instead of doing your work. keel has
-      three house rules <em>for itself</em> to prevent that:</p>
+      <p>Most add-ons for AI assistants keep growing. Every clever idea gets bolted on,
+      until one day you're maintaining the add-on and not doing your work. keel has
+      three house rules <em>for itself</em> to stop that.</p>
       <div style="margin-top:1.4rem">
         <div class="rule">
           <div class="num">01</div>
           <div>
-            <h3>Borrow the hard parts</h3>
-            <p>keel keeps only what nobody else can own for you — your rules, your
-            records. Everything else it borrows from tools whose whole job is doing that
+            <h3>Own the config, buy the capabilities</h3>
+            <p>keel keeps only what nobody else can own for you, which is your rules and
+            your records. For everything else it uses tools whose whole job is doing that
             one thing well.</p>
           </div>
         </div>
@@ -88,23 +217,23 @@ import Base from "../layouts/Base.astro";
           <div class="num">02</div>
           <div>
             <h3>Build on the paved road</h3>
-            <p>It builds on the parts of Claude Code that Anthropic publicly promises
-            to keep stable — which is why a week of platform updates doesn't break it.
-            The three exceptions are stated openly, with their exit conditions.</p>
+            <p>keel uses the parts of Claude Code that Anthropic publicly documents. That's
+            why a week of platform updates doesn't break it. Where it leans on something
+            undocumented, it says so and names how it gets out.</p>
           </div>
         </div>
         <div class="rule">
           <div class="num">03</div>
           <div>
-            <h3>Nothing is added until it's been missed</h3>
-            <p>Features earn their way in by being genuinely missed in real work — never
-            because they sound clever somewhere else. It's how keel stays a helper
-            instead of becoming a second job.</p>
+            <h3>Nothing gets added until it's been missed</h3>
+            <p>A feature gets in when I actually missed it during real work. Sounding
+            clever in someone else's project isn't enough. That's how keel stays a helper
+            and doesn't turn into a second job.</p>
           </div>
         </div>
       </div>
       <p class="sub" style="margin-top:1.4rem">
-      <a href="/technical#constitution">The constitution, with its real names →</a></p>
+      <a href="/technical#constitution">The rules, with their real names →</a></p>
     </div>
   </section>
 
@@ -112,13 +241,12 @@ import Base from "../layouts/Base.astro";
     <div class="wrap">
       <span class="kicker">the promise</span>
       <h2>A good houseguest</h2>
-      <p><strong>keel is easy to remove.</strong> Every part has an off switch,
-      installing it changes nothing about how you use the assistant, and uninstalling
-      takes two commands. What stays afterward is deliberate: your work diary, your
-      notes, and the config backups — they were always yours, and
-      <a href="https://github.com/JimmayVV/keel/blob/main/docs/UNINSTALL.md">every
-      path is listed</a> so removing them is your choice too. Helpful while it's
-      there — and no drama when it leaves.</p>
+      <p><strong>keel is easy to remove.</strong> Every guard has an off switch.
+      Installing keel doesn't change how you start or use the assistant, and
+      uninstalling takes two commands. Some things stay behind on purpose: your work
+      diary, your notes, and the config backups. They were always yours.
+      <a href="https://github.com/redlinelabs-dev/keel/blob/main/docs/UNINSTALL.md">Every
+      path is listed</a>, so deleting them is your call too.</p>
     </div>
   </section>
 </Base>

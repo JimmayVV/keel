@@ -1,7 +1,7 @@
 ---
 import "../styles/global.css";
 import Mark from "../components/Mark.astro";
-const { title = "keel — a curated layer under Claude Code", description = "A keel is the beam a hull is built on. This one goes under Claude Code: guards at the ingest boundary, commit hygiene, an activity log, and wiring for a notes backend that stays yours." } = Astro.props;
+const { title = "keel · a thin layer under Claude Code", description = "A keel is the beam a hull is built on. This one goes under Claude Code. It adds guardrails, commit hygiene, a work diary, and wiring for notes you keep." } = Astro.props;
 const path = Astro.url.pathname.replace(/\.html$/, "").replace(/\/index$/, "").replace(/\/$/, "") || "/";
 const current = (p) => (path === p ? "page" : undefined);
 const canonical = new URL(path, Astro.site).href;
@@ -25,20 +25,22 @@ const canonical = new URL(path, Astro.site).href;
         <a href="/skills" aria-current={current("/skills")}>skills</a>
         <a href="/philosophy" aria-current={current("/philosophy")}>philosophy</a>
         <a href="/technical" aria-current={current("/technical")}>technical</a>
-        <a href="https://github.com/JimmayVV/keel">github ↗</a>
+        <a href="https://github.com/redlinelabs-dev/keel">github ↗</a>
       </div>
     </div>
   </nav>
 
-  <slot />
+  <main>
+    <slot />
+  </main>
 
   <footer>
     <div class="wrap">
       <p>MIT licence. Hook patterns descend from Daniel Miessler's PAI (MIT), since renamed
-      LifeOS — an independent implementation, not a fork; the
-      <a href="https://github.com/JimmayVV/keel/blob/main/NOTICE">NOTICE</a> file scopes
+      LifeOS. keel is an independent implementation, not a fork. The
+      <a href="https://github.com/redlinelabs-dev/keel/blob/main/NOTICE">NOTICE</a> file scopes
       exactly what was derived.</p>
-      <p class="promise">this site is static html — no javascript, no analytics, no cookies, no third-party requests.</p>
+      <p class="promise">this site is static html. no javascript, no analytics, no cookies, no third-party requests.</p>
     </div>
   </footer>
 </body>
