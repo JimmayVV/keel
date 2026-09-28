@@ -56,7 +56,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 # where machine-local, regenerable-ish data belongs.
 KEEL_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/keel"
 BACKUP="$KEEL_STATE/backups/claude-$STAMP"
-DRY=0; DO_RESET=""; DO_BACKUP=""; MARKETPLACE="JimmayVV/keel"
+DRY=0; DO_RESET=""; DO_BACKUP=""; MARKETPLACE="redlinelabs-dev/keel"
 # Marketplaces the reset moved aside, as ready-to-run `add` lines. Declared here
 # because the Done section reads it whether or not the reset ran, and this script
 # runs under `set -u`.
