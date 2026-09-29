@@ -14,7 +14,7 @@ Two separate problems that get conflated. Solve them separately.
 Every machine installs the same plugin from the same marketplace:
 
 ```sh
-/plugin marketplace add JimmayVV/keel
+/plugin marketplace add redlinelabs-dev/keel
 /plugin install keel@keel
 claude plugin update keel@keel      # later
 ```

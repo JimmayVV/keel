@@ -69,7 +69,7 @@ command -v node >/dev/null 2>&1 || fail "node is not on PATH" \
 
 [ -d "$MP/.git" ] || fail "no keel marketplace checkout at $MP" \
   "This script repairs an existing install; it does not create one." \
-  "For a first install use:  /plugin marketplace add JimmayVV/keel"
+  "For a first install use:  /plugin marketplace add redlinelabs-dev/keel"
 
 # ── 2. advance the marketplace checkout ─────────────────────────────────────
 # `claude plugin marketplace update` has been observed reporting success while

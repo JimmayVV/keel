@@ -197,7 +197,7 @@ Start again and confirm you're still logged in and your memory came back.
 ## 6. Install keel
 
 ```
-/plugin marketplace add JimmayVV/keel
+/plugin marketplace add redlinelabs-dev/keel
 /plugin install keel@keel
 ```
 

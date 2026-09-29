@@ -61,7 +61,7 @@ const TWO_MARKETPLACES = JSON.stringify({
     source: { source: "github", repo: "anthropics/claude-plugins-official" },
     installLocation: "/somewhere/claude-plugins-official",
   },
-  keel: { source: { source: "github", repo: "JimmayVV/keel" } },
+  keel: { source: { source: "github", repo: "redlinelabs-dev/keel" } },
   "some-private": { source: { source: "git", url: "https://git.example.com/x/mp.git" } },
 });
 
@@ -73,7 +73,7 @@ describe("install.sh --reset and the plugin registry", () => {
     assert.match(out, /claude plugin marketplace add https:\/\/git\.example\.com\/x\/mp\.git/);
     // keel is re-added by the installer itself two steps later — listing it would
     // be noise, and noise in this block is how the real ones get skimmed past.
-    assert.doesNotMatch(out, /marketplace add JimmayVV\/keel\n.*marketplace add JimmayVV\/keel/s);
+    assert.doesNotMatch(out, /marketplace add redlinelabs-dev\/keel\n.*marketplace add redlinelabs-dev\/keel/s);
   });
 
   test("hands the restore to `keel migrate`, and says so at the end", () => {

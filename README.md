@@ -150,7 +150,7 @@ the guard entirely. Fails **open** on any internal error, and only inspects actu
 Two lines inside Claude Code — vanilla or years-old setup, same two lines:
 
 ```
-/plugin marketplace add JimmayVV/keel
+/plugin marketplace add redlinelabs-dev/keel
 /plugin install keel@keel
 ```
 
@@ -180,7 +180,7 @@ keel on top — that is a bigger decision than an install, and it stays a
 deliberate, human-run script:
 
 ```sh
-git clone https://github.com/JimmayVV/keel && bash keel/scripts/install.sh
+git clone https://github.com/redlinelabs-dev/keel && bash keel/scripts/install.sh
 ```
 
 It walks the whole thing — dependency check, backup, optional reset to vanilla,
