@@ -68,6 +68,17 @@ import Base from "../layouts/Base.astro";
             it.</li>
             <li><strong>Off switch.</strong> <code>KEEL_GUARD_OFF=1</code> turns all of it
             off.</li>
+            <li><strong>Not a sandbox.</strong> Claude Code has its own OS-level
+            <a href="https://code.claude.com/docs/en/sandboxing">Bash sandbox</a>, off
+            until <code>/sandbox</code> or <code>sandbox.enabled</code> turns it on. keel
+            neither installs nor enables it. It limits the writes and network hosts of
+            Bash, PowerShell, and Monitor commands and their child processes, using
+            Seatbelt on macOS and <code>bubblewrap</code> plus <code>socat</code> on Linux
+            and WSL2. Read, Edit, and Write go through permissions instead, and hooks and
+            MCP servers run outside it. By default it still lets commands read
+            <code>~/.ssh</code> and <code>~/.aws/credentials</code>. The guard is a
+            separate layer, a <code>PreToolUse</code> hook on Bash, Read, Edit, and
+            Write.</li>
           </ul>
         </div>
 

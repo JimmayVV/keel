@@ -117,6 +117,17 @@ checked first and winning outright. A block tells you that file's path and the s
 hatch documented only in the source isn't one. `KEEL_GUARD_OFF=1` still disables
 the guard entirely.
 
+The guard is not a sandbox. Claude Code has its own OS-level
+[Bash sandbox](https://code.claude.com/docs/en/sandboxing), off until you turn it on
+with `/sandbox` or `sandbox.enabled`, and keel neither installs nor enables it. When
+on, the OS limits what Bash, PowerShell, and Monitor commands and their child
+processes can write and which hosts they can reach: Seatbelt on macOS, `bubblewrap`
+and `socat` on Linux and WSL2. The built-in Read, Edit, and Write tools go through
+permissions instead, and hooks and MCP servers run outside it. Its default read
+policy still lets commands read `~/.ssh` and `~/.aws/credentials`. keel's guard is a
+separate layer: a hook that checks each Bash, Read, Edit, and Write call before it
+runs.
+
 ### Activity log
 
 Records what you asked and what was concluded, tagged by repo and branch — so the
