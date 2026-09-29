@@ -31,7 +31,7 @@ jargon upward or absolutes downward.
   that `docs.test.mjs` doesn't check.
 - Every teardown ships the check that would notice its corpses. Every guard
   ships its off switch. Every write ships its backup and its undo.
-- Undocumented Claude Code surfaces: don't. The three exceptions live in
+- Undocumented Claude Code surfaces: don't. The exceptions live in
   `docs/DOCUMENTED-SURFACES.md` with blast radius and exit conditions; a new
   one needs a row there or it doesn't ship.
 

@@ -5,11 +5,12 @@ vessel steady without ever being the boat — and that is exactly what this is t
 [Claude Code](https://code.claude.com): a thin, durable layer underneath that holds
 your sessions steady and your setup on course.**
 
-Quick to stand up, just as quick to discard. Everything it adds rides on surfaces
-Anthropic documents: guards at the ingest boundary, commit hygiene, an activity log,
-and wiring for a notes backend that stays yours — plain files, synced however you
-choose. The point is leverage, not
-bulk — a minimal customization of the stock tool that lets your own work compound into
+Quick to stand up, just as quick to discard. It adds guards at the ingest boundary,
+commit hygiene, an activity log, and wiring for a notes backend that stays yours —
+plain files, synced however you choose. It rides on surfaces Anthropic documents,
+and the few places it doesn't are
+[listed with their exits](docs/DOCUMENTED-SURFACES.md#acknowledged-exceptions--undocumented-depended-on-said-out-loud).
+The point is leverage, not bulk — a minimal customization of the stock tool that lets your own work compound into
 a second brain across projects and machines, without keel ever becoming a second
 product you maintain.
 
@@ -39,6 +40,9 @@ answers already shipping. What survived as genuinely worth owning is small and u
 
 If Anthropic hasn't documented it, keel doesn't read, write, or parse it. No exceptions for
 convenience. A feature that needs an undocumented surface is a feature that doesn't ship.
+Where keel depends on one anyway, as a repair for breakage seen on a real machine,
+[the exceptions table](docs/DOCUMENTED-SURFACES.md#acknowledged-exceptions--undocumented-depended-on-said-out-loud)
+names it, its blast radius, and its exit.
 
 This has teeth. The system keel replaced parsed session transcripts out of an undocumented
 JSONL format to power search. It worked — and it was the least durable thing in the stack,
@@ -341,7 +345,9 @@ test suite.
 - A daemon, web UI, or background service
 - Credential management
 - A status line — use [ccstatusline](https://github.com/sirmalloc/ccstatusline), which has a
-  live-preview TUI and already covers usage limits, reset timers, and worktree state
+  live-preview TUI and already covers usage limits, reset timers, and worktree state.
+  keel neither ships nor depends on it, and some of its widgets read the session
+  transcripts that keel's own code stays off
 
 ---
 
