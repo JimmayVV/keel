@@ -15,7 +15,8 @@ So keel does not build a memory engine and does not marry one:
 
 > **keel owns the interface and the substrate. Engines are swappable.**
 
-The substrate is markdown in a git repo you control. The interface is Claude
+The substrate is stores you control: auto memory's markdown on each machine for
+machine facts, the notes store for decided facts. The interface is Claude
 Code's own documented hooks. An engine is a thing that turns transcripts into
 facts — replaceable, and never load-bearing for remembering.
 
@@ -144,8 +145,8 @@ no MCP round trip, no engine. A prompt must never wait on a memory service.
 ### It must degrade to nothing
 
 If query recall fails, errors, or times out, the hook returns no context and the
-turn proceeds. Ambient recall still works, because it is just files on disk that
-git already synced. The floor of this system is "Claude reads your notes," and
+turn proceeds. Ambient recall still works, because it is just files already on
+this machine's disk. The floor of this system is "Claude reads your notes," and
 that floor has no moving parts.
 
 ---
