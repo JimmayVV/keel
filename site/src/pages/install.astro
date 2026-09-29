@@ -1,13 +1,13 @@
 ---
 import Base from "../layouts/Base.astro";
 ---
-<Base title="install — keel" description="Installing keel under Claude Code: two lines in, one conversation to configure, one command out. Needs Node and honestly not much else — and leaving is one documented command.">
+<Base title="install · keel" description="Installing keel under Claude Code takes two lines. Setup is one conversation, removal is one command, and Node is the only hard requirement.">
   <header class="pagehead">
     <div class="wrap">
       <span class="kicker">install</span>
       <h2>Two lines in, one conversation to configure, one command out</h2>
-      <p class="sub">The uninstall story is as documented as the install one — a layer you
-      can't turn off is a layer you'll eventually resent.</p>
+      <p class="sub">Removal gets the same documentation as installation. If you can't
+      turn a tool off, sooner or later you'll resent it.</p>
     </div>
   </header>
 
@@ -17,10 +17,10 @@ import Base from "../layouts/Base.astro";
         <div class="n">1</div>
         <div>
           <h3>Install the plugin</h3>
-          <p>Inside Claude Code — vanilla or years-old setup, same two lines. A plugin
-          install is additive by construction; nothing about your existing configuration
-          is touched.</p>
-          <pre><code><span class="p">/plugin</span> marketplace add JimmayVV/keel
+          <p>Run these inside Claude Code. They're the same two lines on a fresh setup or
+          a years-old one. A plugin install only adds things, so your existing
+          configuration stays as it is.</p>
+          <pre><code><span class="p">/plugin</span> marketplace add redlinelabs-dev/keel
 <span class="p">/plugin</span> install keel@keel</code></pre>
         </div>
       </div>
@@ -28,16 +28,16 @@ import Base from "../layouts/Base.astro";
       <div class="step">
         <div class="n">2</div>
         <div>
-          <h3>Let Claude walk the configuration</h3>
-          <p>In a fresh session. It looks at what's already set up, asks only about
-          what's missing — a name for this machine, where your notebook should live,
-          your projects, the recommended safety settings — and runs the commands
-          itself. Safe to run again any time as a check-up.</p>
+          <h3>Let Claude walk you through configuration</h3>
+          <p>Start a fresh session. Claude checks what's already set up and asks only
+          about what's missing. That can be a name for this machine, where your notebook
+          lives, your projects, and the recommended safety settings. It runs the
+          commands itself. You can run it again any time as a check-up.</p>
           <pre><code><span class="p">/keel:setup</span></code></pre>
-          <p>Prefer doing it by hand? <code>keel setup --memory-home ~/notes</code>,
-          then <code>claude plugin install keel-memory@keel</code> — the notes engine
-          needs <a href="https://github.com/astral-sh/uv"><code>uv</code></a>, and a
-          fresh session picks it up.</p>
+          <p>Rather do it by hand? Run <code>keel setup --memory-home ~/notes</code>,
+          then <code>claude plugin install keel-memory@keel</code>. The notes engine
+          needs <a href="https://github.com/astral-sh/uv"><code>uv</code></a>, and the
+          next fresh session picks it up.</p>
         </div>
       </div>
 
@@ -45,10 +45,10 @@ import Base from "../layouts/Base.astro";
         <div class="n">3</div>
         <div>
           <h3>There is no step three</h3>
-          <p>No launcher, no wrapper, no alias — you invoke <code>claude</code> exactly as
-          you would without keel. Everything it contributes loads into a plain session.
-          <code>keel update</code> pulls the latest whenever you like, and verifies by
-          commit rather than trusting a version string.</p>
+          <p>There's no launcher, wrapper, or alias. You start <code>claude</code> the
+          same way you would without keel, and keel loads into that plain session.
+          <code>keel update</code> pulls the latest version whenever you want. It checks
+          the commit it landed on, because a version number can lie.</p>
         </div>
       </div>
     </div>
@@ -57,14 +57,14 @@ import Base from "../layouts/Base.astro";
   <section>
     <div class="wrap">
       <span class="kicker">requirements</span>
-      <h2>Node, and honestly not much else</h2>
+      <h2>Node, and not much else</h2>
       <table>
-        <tr><td>node</td><td>The hooks are plain <code>.mjs</code> with <strong>zero
-        dependencies</strong>. Your machines may not have bun, deno, python, or jq — node
-        is the portable floor.</td></tr>
-        <tr><td>uv + python ≥ 3.12</td><td>Only if you enable the <code>keel-memory</code>
-        adapter — and <code>uv</code> provisions the interpreter for you, which is why
-        upstream recommends it.</td></tr>
+        <tr><td>node</td><td>The hooks are plain <code>.mjs</code> files with <strong>no
+        dependencies</strong>. Your machines might not have bun, deno, python, or jq, but
+        they'll have node.</td></tr>
+        <tr><td>uv + python ≥ 3.12</td><td>You only need these if you turn on the
+        <code>keel-memory</code> adapter. <code>uv</code> installs the right Python for
+        you, which is why Basic Memory recommends it.</td></tr>
       </table>
     </div>
   </section>
@@ -74,26 +74,27 @@ import Base from "../layouts/Base.astro";
       <span class="kicker">the exits</span>
       <h2>Leaving is one command, and it's documented</h2>
       <table>
-        <tr><td>KEEL_GUARD_OFF=1</td><td>Disables the security guard entirely.</td></tr>
-        <tr><td>KEEL_ACTIVITY_OFF=1</td><td>Stops activity capture without uninstalling.</td></tr>
-        <tr><td>KEEL_TRAILERS_OFF=1</td><td>Disables the commit-trailer guard.</td></tr>
+        <tr><td>KEEL_GUARD_OFF=1</td><td>Turns the security guard off completely.</td></tr>
+        <tr><td>KEEL_ACTIVITY_OFF=1</td><td>Stops the work diary without uninstalling.</td></tr>
+        <tr><td>KEEL_TRAILERS_OFF=1</td><td>Turns off the commit signature guard.</td></tr>
         <tr><td>KEEL_INGEST_OFF=1</td><td>Stops stamping web and app content as untrusted.</td></tr>
-        <tr><td>KEEL_RECALL_OFF=1</td><td>Stops memory files being surfaced with your prompts.</td></tr>
-        <tr><td>~/.config/keel/policy.json</td><td>Your policy — adds rules, or
-        <strong>exempts</strong> any shipped one via <code>bash.allow</code> /
-        <code>paths.allow</code>, checked first and winning outright.</td></tr>
-        <tr><td>/plugin uninstall keel@keel</td><td>The software, gone. Your work
-        diary, notes, and backups stay — they're yours, and
-        <a href="https://github.com/JimmayVV/keel/blob/main/docs/UNINSTALL.md">UNINSTALL.md</a>
-        lists every path if you want them gone too.</td></tr>
+        <tr><td>KEEL_RECALL_OFF=1</td><td>Stops keel adding memory files to your prompts.</td></tr>
+        <tr><td>~/.config/keel/policy.json</td><td>Your own policy. It can add rules, or
+        <strong>exempt</strong> any rule keel ships with <code>bash.allow</code> or
+        <code>paths.allow</code>. keel checks your exemptions first, and they win.</td></tr>
+        <tr><td>/plugin uninstall keel@keel</td><td>Removes the software. Your work diary,
+        notes, and backups stay, because they're yours.
+        <a href="https://github.com/redlinelabs-dev/keel/blob/main/docs/UNINSTALL.md">UNINSTALL.md</a>
+        lists every path in case you want those gone too.</td></tr>
       </table>
 
-      <div class="note"><strong>The fresh-start ceremony</strong> is the one thing that
-      stays a deliberate, human-run script: resetting an accumulated config to vanilla with
-      keel on top. <code>bash scripts/install.sh</code> walks it — never runs
-      <code>sudo</code>, never deletes (the reset is a <code>mv</code> with the undo
-      printed first), and <code>keel migrate</code> can put back marketplaces and plugins
-      from the old config at any point after, one at a time or all at once.</div>
+      <div class="note"><strong>The fresh start</strong> is the one step that stays a
+      script a person runs on purpose. It resets a cluttered config to a clean one with
+      keel on top. <code>bash scripts/install.sh</code> walks through it. It never runs
+      <code>sudo</code> and never deletes anything. The reset is a <code>mv</code>, and
+      the script prints the undo command first. Afterwards, <code>keel migrate</code>
+      can bring back marketplaces and plugins from the old config, one at a time or all
+      together.</div>
     </div>
   </section>
 </Base>

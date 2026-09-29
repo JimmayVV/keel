@@ -1,14 +1,15 @@
 ---
 import Base from "../layouts/Base.astro";
 ---
-<Base title="skills — keel" description="The six skills keel ships and the one direction of trust they all follow — what each one does and when it fires.">
+<Base title="skills · keel" description="The six skills keel ships, what each one does, and when it runs.">
   <header class="pagehead">
     <div class="wrap">
       <span class="kicker">skills</span>
       <h2>Six skills, one direction of trust</h2>
-      <p class="sub">Each is a question you ask in plain language, and each says where
-      every claim came from. They're instructed never to act unasked. Together
-      they stack in time: what's promised → what happened.</p>
+      <p class="sub">You ask each one a question in plain language, and each one says
+      where its claims came from. Their instructions tell them not to act unless you
+      ask. Two of them cover time. deck tracks what you promised and week tracks what
+      happened.</p>
     </div>
   </header>
 
@@ -16,69 +17,75 @@ import Base from "../layouts/Base.astro";
     <div class="wrap">
       <div class="grid cols2">
         <div class="card">
-          <h3>deck — what's promised</h3>
-          <p class="big">Say a commitment out loud today; ask “where do I stand?” in a
-          fresh session tomorrow.</p>
-          <p>Your promises, kept in your own words — “review it deeply enough that it
-          can merge by Wednesday” carries meaning a due-date field can't. When you ask,
-          it checks the live facts (did that get merged? is the ticket overdue?), flags
-          the promise nothing has moved on, and lets you reorder the list by just
-          saying so. It never writes down a status — those are checked fresh every
-          time, so they can't go stale.</p>
+          <h3>deck: what you promised</h3>
+          <p class="big">Say a commitment out loud today. Tomorrow, in a fresh session,
+          ask "where do I stand?"</p>
+          <p>deck keeps your promises in your own words. "Review it deeply enough that
+          it can merge by Wednesday" says more than a due date field can. When you ask,
+          it checks the live facts. Did that get merged? Is the ticket overdue? It flags
+          promises nothing has moved on, and you can reorder the list just by saying
+          so. It never writes a status down. It checks each one fresh, so none of them
+          go stale.</p>
         </div>
         <div class="card">
-          <h3>week — what happened</h3>
-          <p class="big">Reconstruct what you actually did, from three sources — because
-          git alone under-reports your most valuable work.</p>
-          <p>Weighing options, reviewing someone else's change, investigating something
-          and deciding <em>no</em> — none of it shows up in the code you shipped. week
-          merges the work diary, your project histories, and your team's review tools
-          where connected, then drafts the summary you can actually send. It never
-          invents activity, and says “no evidence” rather than “no work.”</p>
+          <h3>week: what happened</h3>
+          <p class="big">Rebuild what you actually did from three sources, because git
+          alone misses your most valuable work.</p>
+          <p>Weighing options, reviewing someone else's change, looking into something
+          and deciding against it. None of that shows up in the code you shipped. week
+          combines the work diary, your project histories, and your team's review tools
+          where you've connected them. Then it drafts a summary you can send. It doesn't
+          make up activity, and it says "no evidence" where it finds nothing, not "no
+          work".</p>
         </div>
         <div class="card">
-          <h3>guide — how it all works</h3>
-          <p class="big">keel explained from the live tree, never from memory of it.</p>
-          <p>Reads the sibling skills' own files, runs the CLI's own help, and answers
-          from what's actually on disk — so its explanations cover every skill keel
-          grows next with zero maintenance. Walkthrough mode — a dry look at week
-          or deck — runs only read-only steps and stops where the writes would
-          begin. Every explanation keeps the exit visible.</p>
+          <h3>guide: how it all works</h3>
+          <p class="big">guide explains keel from the files installed on your machine,
+          not from memory.</p>
+          <p>It reads the other skills' own files, runs the CLI's help, and answers from
+          what's on disk. When keel gets a new skill, guide covers it without anyone
+          updating guide. In walkthrough mode it gives you a dry run of week or deck. It
+          runs only the steps that read and stops before anything writes. Every
+          explanation tells you how to turn the thing off.</p>
         </div>
         <div class="card">
-          <h3>setup — how it's wired</h3>
-          <p class="big">The install ceremony, as a conversation.</p>
-          <p>Inspects first, asks only about the gaps, names every write before making
-          it, and drives the CLI's flag form so you never babysit a TTY prompt. Derives
-          your project registry from the activity log and git remotes, asking only for
-          what machinery can't know. Never destructive; safe to re-run any time.</p>
+          <h3>setup: how it's wired</h3>
+          <p class="big">The install steps, as a conversation.</p>
+          <p>setup looks around first and asks only about what's missing. It tells you
+          about each write before it makes it. It uses the CLI's flags, so you never
+          sit at an interactive prompt. It builds your project list from the work diary
+          and your git remotes, and asks you only for what it can't look up. It doesn't
+          delete anything, and you can run it again any time.</p>
         </div>
         <div class="card">
-          <h3>doctor — diagnose and repair</h3>
+          <h3>doctor: find it and fix it</h3>
           <p class="big">Check keel, and fix what's broken.</p>
-          <p>Runs <code>keel doctor</code>, explains each finding in plain terms, and
-          applies the fix it prints — with your consent — re-checking until clean. The
-          one worth knowing is the Basic Memory registration loop: it confirms your
-          notes store actually works, not just that a directory exists.</p>
+          <p>doctor runs <code>keel doctor</code> and explains each finding in plain
+          terms. With your OK, it applies the fix the check prints, then checks again
+          until everything passes. The most useful check is the one for Basic Memory. It
+          confirms your notes store really works, which is more than checking that a
+          folder exists.</p>
         </div>
         <div class="card">
-          <h3>fleet — how a repo accepts code</h3>
-          <p class="big">Put a repo on your shared CI and merge baseline, new or existing.</p>
-          <p>Reads which workflows repo and template you use from your notes, checks
-          first whether the repo can auto-merge at all — a private repo on GitHub's
-          free plan can't, and it's instructed to say so rather than pretend — and
-          names each change before making it. It's told never to handle the review
-          bot's token; it hands you the command to set it yourself.</p>
+          <h3>fleet: how a repo accepts code</h3>
+          <p class="big">Put a new or existing repo on your usual CI and merge
+          rules.</p>
+          <p>fleet reads which workflows repo and template you use from your notes.
+          Then it checks whether the repo can auto-merge at all. A private repo on
+          GitHub's free plan can't, and fleet's instructions tell it to say so. It tells
+          you about each change before making it. Its instructions also tell it never to
+          handle the review bot's token. It gives you the command to set the token
+          yourself.</p>
         </div>
         <div class="card">
           <h3>the toolbox underneath</h3>
           <p class="big"><code>keel status · log · recall · doctor · setup · settings · update ·
           migrate · link</code></p>
-          <p>Small commands the skills stand on — mostly for reading, careful about
-          writing, and safe to run twice. In practice the assistant runs them for you.
-          <code>keel doctor</code> is the noisy one: it checks everything the rest of
-          the system stays politely quiet about, and tells you exactly what to fix.
-          <a href="/technical#cli">The technical version →</a></p>
+          <p>The skills run on these small commands. Most of them only read, the ones
+          that write are careful, and running any of them twice is safe. Usually the
+          assistant runs them for you. <code>keel doctor</code> is the loud one. It
+          checks everything the rest of keel keeps quiet about and tells you exactly
+          what to fix. <a href="/technical#cli">The technical version →</a></p>
         </div>
       </div>
     </div>

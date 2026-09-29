@@ -1,7 +1,9 @@
 ---
-// Hero illustration — the argument of the product, drawn. A sleek hull shown
-// faint (it is not the boat), a thin fin keel with a torpedo bulb shown lit
-// (it is the point), still water. No rig: the keel is the subject.
+// Hero illustration — the argument of the product, drawn as a shipwright would
+// draw it: a lines plan. Station lines and a waterline rule the sheet; the hull
+// is a single ink outline (it is not the boat); the fin keel and its ballast
+// bulb are the one solid, filled shape — the thing that was laid first.
+// No rig: the keel is the subject.
 ---
 <svg
   class="hull-art"
@@ -11,18 +13,24 @@
   role="img"
   aria-label="A racing hull drawn faintly, its fin keel and ballast bulb highlighted beneath the waterline"
 >
-  <!-- still water -->
-  <g class="water" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-    <line x1="6"   y1="112" x2="66"  y2="112" stroke-dasharray="1 9" />
-    <line x1="452" y1="112" x2="514" y2="112" stroke-dasharray="1 9" />
-    <line x1="26"  y1="150" x2="92"  y2="150" stroke-dasharray="1 11" opacity="0.55" />
-    <line x1="428" y1="150" x2="492" y2="150" stroke-dasharray="1 11" opacity="0.55" />
-    <line x1="54"  y1="192" x2="110" y2="192" stroke-dasharray="1 13" opacity="0.3" />
-    <line x1="404" y1="192" x2="462" y2="192" stroke-dasharray="1 13" opacity="0.3" />
+  <!-- station lines: the drawing's frame numbers, faint -->
+  <g class="stations" stroke="currentColor" stroke-width="1" stroke-dasharray="2 6">
+    <line x1="100" y1="40" x2="100" y2="280" />
+    <line x1="170" y1="40" x2="170" y2="280" />
+    <line x1="240" y1="40" x2="240" y2="280" />
+    <line x1="310" y1="40" x2="310" y2="280" />
+    <line x1="380" y1="40" x2="380" y2="280" />
+    <line x1="450" y1="40" x2="450" y2="280" />
+  </g>
+
+  <!-- the waterline, ruled straight across the sheet -->
+  <g class="water" stroke="currentColor" stroke-width="1.25" stroke-linecap="round">
+    <line x1="8" y1="112" x2="512" y2="112" stroke-dasharray="10 7" />
+    <line x1="8" y1="118" x2="512" y2="118" stroke-dasharray="2 9" opacity="0.5" />
   </g>
 
   <!-- hull: long, low, bow left — mostly above the water it barely disturbs -->
-  <g class="boat" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+  <g class="boat" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round">
     <path d="M34 88
              C 130 80, 340 78, 444 90
              C 448 98, 448 104, 444 112
@@ -30,11 +38,9 @@
              C 130 140, 70 118, 34 88 Z" />
     <!-- sheer accent -->
     <path d="M54 92 C 150 85, 330 83, 430 93" stroke-width="1" opacity="0.5" />
+    <!-- rudder: thin blade dropping from the underbody, aft -->
+    <path d="M392 130 C 394 156, 396 172, 402 184 C 408 172, 406 152, 402 128" stroke-width="1.5" />
   </g>
-
-  <!-- rudder: thin blade dropping from the underbody, aft -->
-  <path class="boat" d="M392 130 C 394 156, 396 172, 402 184 C 408 172, 406 152, 402 128"
-        stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
 
   <!-- the keel: thin blade, slight aft rake, ballast bulb. The subject. -->
   <g class="keel">
@@ -46,11 +52,19 @@
              C 220 257, 204 252, 204 244 Z"
           fill="var(--accent)" />
   </g>
+
+  <!-- the measured part: a dimension line under the ballast -->
+  <g class="dim" stroke="var(--accent)" stroke-width="1" stroke-linecap="round">
+    <line x1="204" y1="274" x2="290" y2="274" />
+    <line x1="204" y1="269" x2="204" y2="279" />
+    <line x1="290" y1="269" x2="290" y2="279" />
+  </g>
 </svg>
 
 <style>
-  .hull-art { width: 100%; max-width: min(28rem, 100%); height: auto; display: block; }
-  .hull-art .boat  { opacity: 0.45; }
-  .hull-art .water { opacity: 0.75; color: var(--dim); }
-  .hull-art .keel  { filter: drop-shadow(0 2px 9px color-mix(in srgb, var(--accent) 35%, transparent)); }
+  .hull-art { width: 100%; max-width: min(30rem, 100%); height: auto; display: block; }
+  .hull-art .stations { color: var(--fg); opacity: 0.16; }
+  .hull-art .water { color: var(--dim); opacity: 0.85; }
+  .hull-art .boat { color: var(--fg); opacity: 0.8; }
+  .hull-art .dim { opacity: 0.7; }
 </style>
