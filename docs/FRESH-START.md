@@ -276,7 +276,9 @@ npx -y ccstatusline@latest
 ```
 
 It offers to write the settings itself. To revert, remove the `statusLine` key
-from `settings.json`.
+from `settings.json`. keel neither ships nor depends on it. Some of its widgets
+read session transcripts, the surface
+[DOCUMENTED-SURFACES.md](DOCUMENTED-SURFACES.md) keeps keel's own code off.
 
 **Durable notes** — needs `uv` and Python 3.12. On Ubuntu 22.04 the system Python
 is 3.10 and there is no 3.12 in the repos, so `uv` does the provisioning. Install
