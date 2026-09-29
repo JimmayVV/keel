@@ -162,10 +162,12 @@ nav .links a[aria-current="page"] { color: var(--accent); border-bottom-color: v
 .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
 
 @media (max-width: 780px) {
-  .hero { padding-top: 3rem; }
+  .hero { padding-top: 2.25rem; }
   .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
-  .hero-art { order: -1; justify-content: flex-start; }
-  .hero-art svg { max-width: min(20rem, 100%); }
+  /* name first, drawing after the buttons and smaller: on a phone the art is a
+     footnote to the pitch, not the first screenful */
+  .hero-art { justify-content: flex-start; margin-top: 1rem; }
+  .hero-art svg { max-width: min(16rem, 100%); }
 }
 
 /* ── sections: each one a station on the beam ───── */
@@ -376,9 +378,19 @@ footer .promise {
 }
 
 @media (max-width: 640px) {
-  nav .wrap { min-height: 0; }
-  nav .links { gap: 0.3rem 0.7rem; margin-left: 0; }
-  nav .links a { font-size: 0.86rem; letter-spacing: 0.05em; }
+  /* brand on its own row, then every link on one row edge to edge; if a future
+     link doesn't fit, the row scrolls sideways instead of wrapping or widening the page */
+  nav .wrap { min-height: 0; gap: 0.45rem 0; padding-top: 0.6rem; padding-bottom: 0.5rem; }
+  nav .links {
+    flex: 1 0 100%; margin-left: 0; gap: 0 1rem;
+    flex-wrap: nowrap; justify-content: space-between;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  nav .links a { font-size: 0.84rem; letter-spacing: 0.04em; white-space: nowrap; }
+}
+@media (max-width: 360px) {
+  nav .links { gap: 0 0.55rem; }
+  nav .links a { font-size: 0.76rem; letter-spacing: 0.02em; }
   section { padding: 2.8rem 0; }
   .pagehead { padding-top: 3rem; }
   .rule { grid-template-columns: 2.4rem 1fr; }
