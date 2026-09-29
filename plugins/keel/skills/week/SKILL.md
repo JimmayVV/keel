@@ -22,7 +22,7 @@ So use all three, in this order:
 |---|---|---|
 | keel activity log | questions asked, conclusions reached, dead ends | `keel log --days N --json` |
 | git | commits, merges, branches created | `git log` per checkout |
-| PRs / tickets | reviews performed, work shipped, tickets moved | Bitbucket / GitHub / Jira MCP if connected |
+| PRs / tickets | reviews performed, work shipped, tickets moved | Bitbucket / GitHub / Jira MCP if connected; `gh` for GitHub if `gh auth status` succeeds |
 
 ## Procedure
 
@@ -51,10 +51,14 @@ So use all three, in this order:
    work started but not finished.
 
 3. **Get review and shipping activity** *only if* an MCP server for it is
-   connected — check the available tools rather than assuming. Pull requests they
-   reviewed are work that appears nowhere else, and they are usually the most
-   under-credited item in a status update. Do not invent this section if no
-   server is available; omit it and note the omission.
+   connected — check the available tools rather than assuming — or, for GitHub,
+   `gh` is authenticated: run `gh auth status` and use `gh` only if it succeeds.
+   With `gh`, `gh search prs --reviewed-by=@me --updated=">=<since>"` finds
+   reviews and `gh search prs --author=@me --merged --merged-at=">=<since>"`
+   finds shipped work. Pull requests they reviewed are work that appears nowhere
+   else, and they are usually the most under-credited item in a status update.
+   Do not invent this section if neither is available; omit it and note the
+   omission.
 
 4. **Group by project, not by day.** The user thinks in projects. Within each
    project, lead with what *shipped*, then what was *decided*, then what is *in
@@ -69,9 +73,9 @@ So use all three, in this order:
 6. **Snapshot open work — state, not just flow.** The summary above records what
    *moved*; a snapshot records what's *on the plate*, and productivity is the
    delta between two snapshots plus the flow in between. If ticket/PR MCP servers
-   are connected (same discovery as step 3), capture open items assigned to the
-   user — issues, PRs authored, PRs awaiting their review — as a dated markdown
-   file:
+   are connected, or `gh` is authenticated for GitHub (same discovery as step 3),
+   capture open items assigned to the user — issues, PRs authored, PRs awaiting
+   their review — as a dated markdown file:
 
    ```
    $KEEL_MEMORY_HOME/work/snapshots/YYYY-MM-DD-open-work.md

@@ -43,9 +43,10 @@ ticket if one is in view. A no is a no for that item, not the practice.
    the practice. Never pad an empty deck from git.
 
 2. **Verify every pointer live** — only via MCP servers actually connected
-   (check the available tools; never assume). PR merged or approved? Ticket
-   moved, due, overdue? An unreachable tracker makes an item "unverified", not
-   done and not invented.
+   (check the available tools; never assume), or, for GitHub pointers, `gh` if
+   `gh auth status` succeeds (`gh pr view <url> --json state,reviewDecision`).
+   PR merged or approved? Ticket moved, due, overdue? An unreachable tracker
+   makes an item "unverified", not done and not invented.
 
 3. **Pull recent motion**: `keel log --days 3 --json` for what's actually been
    worked, so "in flight" is evidence rather than memory.
