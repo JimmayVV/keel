@@ -240,6 +240,24 @@ describe("keel search", () => {
     }
   });
 
+  test("--stats counts only the window: 30 days by default, --days N narrows it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "keel-search-days-"));
+    const daysAgo = (d) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const rec = (d) => JSON.stringify({ at: daysAgo(d), bank: "personal", level: "facts", budget: "mid", ms: 1000, outcome: "ok", query: `q${d}` });
+    try {
+      mkdirSync(join(root, "cfg", "keel"), { recursive: true });
+      writeFileSync(join(root, "cfg", "keel", "search.jsonl"), `${[rec(2), rec(10), rec(40)].join("\n")}\n`);
+      const all = await search(["--stats"], {}, { root });
+      assert.match(all.out, /last 30 day\(s\)/);
+      assert.match(all.out, /personal · facts · mid: 2 search\(es\)/);
+      const week = await search(["--stats", "--days", "7"], {}, { root });
+      assert.match(week.out, /last 7 day\(s\)/);
+      assert.match(week.out, /personal · facts · mid: 1 search\(es\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("--stats with no log says so", async () => {
     const r = await search(["--stats"]);
     assert.equal(r.status, 0, r.out);
