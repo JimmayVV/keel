@@ -57,12 +57,16 @@ right one):
 
 Everything below follows from one rule about these two:
 
-> **Recall is local file reads. Retain is remote LLM work. Never invert it.**
+> **Recall's floor is local file reads. Retain is remote LLM work. Never invert it.**
 
-Recall sits in the path of every prompt you type. It must be fast, offline-safe,
-and incapable of failing in a way you notice. Retain is derivation about the
-past — it can be slow, batched, asynchronous, and running on a machine that is
-currently switched off.
+Recall sits in the path of every prompt you type. Its floor must be fast,
+offline-safe, and incapable of failing in a way you notice. Retain is derivation
+about the past — it can be slow, batched, asynchronous, and running on a machine
+that is currently switched off.
+
+A networked recall may sit above the floor on three terms: a hard deadline,
+silence on any failure, and never holding the only copy of a fact. Break any of
+them and it is no longer above the floor, it is the floor.
 
 Invert this and you get a system that stops remembering when your homelab
 reboots. That is not a memory system, it is a dependency.
@@ -139,13 +143,31 @@ surface, keel injects them alongside the prompt using the documented field:
 }
 ```
 
-Because this runs on every prompt, it reads **local markdown only**. No network,
-no MCP round trip, no engine. A prompt must never wait on a memory service.
+Two hooks answer each prompt, and Claude Code runs them in parallel.
+
+`memory-recall.mjs` is the floor. It reads **local markdown only**: no network,
+no MCP round trip, no engine, within a 1.2 s budget.
+
+`hindsight-recall.mjs` sits above it, and only on a machine with
+`KEEL_HINDSIGHT_URL` set. It asks the bank's recall endpoint, which ranks with
+embeddings and a cross-encoder and makes no LLM call, so a question worded
+differently from its answer can still find it. Code holds it to the first two
+terms above: a 2 s deadline, and no context on any failure. The third is about
+what goes into the bank, and this hook only reads from it. It sends nothing for a prompt with fewer than
+three topic words, because the cross-encoder scored generic prompts like "run
+the tests" high against unrelated facts (0.83 for another project's e2e
+command), and keeps only facts scoring 0.5 or more.
+
+The price is time. A prompt waits for the slower of the two hooks, and against
+the homelab that measured 0.9–1.4 s warm and up to 3 s cold (2026-10-09); a
+cold answer past the deadline is dropped. `keel doctor` reports the latency
+against the deadline, and `KEEL_HINDSIGHT_RECALL_OFF=1` stops paying it.
 
 ### It must degrade to nothing
 
 If query recall fails, errors, or times out, the hook returns no context and the
-turn proceeds. Ambient recall still works, because it is just files already on
+turn proceeds. The two hooks fail independently: Hindsight being down costs the
+local hook nothing. Ambient recall still works, because it is just files already on
 this machine's disk. The floor of this system is "Claude reads your notes," and
 that floor has no moving parts.
 
@@ -246,8 +268,9 @@ wires Basic Memory today. `.mcp.json` is a documented integration point, which
 is the whole reason keel is allowed to use it.
 
 **Recall must be implementable without the engine.** Any engine that can only
-recall through its own service fails the offline floor and can be used for
-retain only.
+recall through its own service fails the offline floor. It may add recall above
+the floor, on the terms in [Two operations](#two-operations-not-one), and never
+be the floor.
 
 ---
 
@@ -285,6 +308,14 @@ state.
   Copies of one fact across projects share a slot and name each other.
   `keel recall "<prompt>"` shows what a prompt would receive; `keel doctor`
   runs the hook and reports duplicated names; `KEEL_RECALL_OFF=1` disables it.
+- Hindsight query recall — `hindsight-recall.mjs` on `UserPromptSubmit`, active
+  only when `KEEL_HINDSIGHT_URL` is set. One POST to the bank's recall endpoint
+  (world facts, low budget, cross-encoder floor 0.5), skipped for prompts with
+  fewer than three topic words, cut off at 2 s, injected one dated line per fact
+  with its source document inside a fence marked as data. `keel recall` shows
+  its answer beside the local one; `keel doctor` reports its latency against the
+  deadline; `KEEL_HINDSIGHT_RECALL_OFF=1` disables it alone, and
+  `KEEL_RECALL_OFF=1` disables both recall hooks.
 - Observation layer — `keel/activity/*.jsonl`, append-only, device-scoped,
   machine-local by declaration ([ADR-0002])
 - Two engine bridges — `keel-memory` (Basic Memory, local) and `keel-reflect`
@@ -294,9 +325,9 @@ state.
 **Not built:**
 
 - **Retain. There is no fact-extraction step at all.** This is the real gap.
-- Vocabulary-gap recall — `daily` and `day` do not match; closing that needs
-  embeddings, which need a service in the keystroke path, which the rule above
-  forbids
+- Offline vocabulary-gap recall — `daily` and `day` do not match locally;
+  closing that needs embeddings. Where Hindsight is configured and reachable,
+  its hook narrows the gap above the floor. The floor itself stays word-matching
 - The driver interface above — currently one hard-coded adapter shape
 
 The honest summary: keel does recall's substrate well and does not retain at

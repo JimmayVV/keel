@@ -55,6 +55,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { STOPWORDS } from "./stopwords.mjs";
 
 /** Never take a session down, and never make it wait. */
 function done(context) {
@@ -130,14 +131,6 @@ function projectsRoot() {
   const cfg = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
   return join(cfg, "projects");
 }
-
-const STOPWORDS = new Set(
-  ("the a an and or but if then than that this these those is are was were be been being do does did" +
-    " done have has had having i me my we our you your it its of to in on for with at by from as not" +
-    " no yes can could should would will just now how what when where which who why please help" +
-    " let make made get got go going use used using need needs want wants like about into out up down" +
-    " over under again more most some any all each other same so very own too also here there").split(/\s+/),
-);
 
 /**
  * Stem crudely and deliberately. A real stemmer is a dependency, and this only

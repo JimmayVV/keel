@@ -111,6 +111,15 @@ import Base from "../layouts/Base.astro";
           files, has a 1.2 second budget, and adds nothing to most prompts on purpose.
           <code>keel recall "…"</code> shows what a prompt would get, and
           <code>KEEL_RECALL_OFF=1</code> turns it off.</p>
+          <p id="hindsight-recall">With <code>KEEL_HINDSIGHT_URL</code> set, a second
+          <code>UserPromptSubmit</code> hook sends the prompt to the bank's recall
+          endpoint (world facts, low budget, embeddings plus a cross-encoder, no LLM
+          call). It skips prompts with fewer than three topic words, keeps facts the
+          cross-encoder scores 0.5 or more, and gives up at 2 seconds. Each fact comes
+          back as one dated line citing its source document, inside a
+          <code>&lt;keel-hindsight&gt;</code> block marked as data. Any failure adds
+          nothing. <code>keel doctor</code> times it against the deadline, and
+          <code>KEEL_HINDSIGHT_RECALL_OFF=1</code> turns it off.</p>
         </div>
 
         <div class="spec">
@@ -197,9 +206,12 @@ import Base from "../layouts/Base.astro";
       as swappable</strong>. The files are markdown you control. The interface is Claude
       Code's documented hooks. An engine turns experience into facts. You can replace
       it, and remembering never depends on it.</p>
-      <blockquote>Recall is local file reads. Retain is remote LLM work. Never swap them.
-      If you do, your memory stops working whenever your homelab reboots. That's a
-      dependency, not a memory system.</blockquote>
+      <blockquote>Recall's floor is local file reads. Retain is remote LLM work. Never
+      swap them. If you do, your memory stops working whenever your homelab reboots.
+      That's a dependency, not a memory system.</blockquote>
+      <p>A networked recall can sit above that floor if it has a hard deadline and adds
+      nothing when it fails. keel's Hindsight hook works that way: 2 seconds, then
+      silence.</p>
       <p>Knowledge is sorted by who can prove it wrong. If <code>grep</code> can, the fact
       is <em>derivable</em>. keel looks it up live and never stores it, so it can't go
       stale. If only you can, it's <em>decided</em>, and the notes store keeps it as a
@@ -223,7 +235,8 @@ import Base from "../layouts/Base.astro";
       </ul>
       <p class="sub">Every guard has an off switch: <code>KEEL_GUARD_OFF</code>,
       <code>KEEL_ACTIVITY_OFF</code>, <code>KEEL_TRAILERS_OFF</code>,
-      <code>KEEL_INGEST_OFF</code>, <code>KEEL_RECALL_OFF</code>. Every write has a backup
+      <code>KEEL_INGEST_OFF</code>, <code>KEEL_RECALL_OFF</code>,
+      <code>KEEL_HINDSIGHT_RECALL_OFF</code>. Every write has a backup
       and an undo. A guard that breaks your workflow is a guard you'll eventually turn
       off. So the ingest boundary never blocks, the log never calls a model, and
       <a href="https://github.com/redlinelabs-dev/keel/blob/main/docs/UNINSTALL.md">the whole

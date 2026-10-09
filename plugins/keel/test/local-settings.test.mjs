@@ -56,7 +56,9 @@ function world({ settings = null, local = null, projects } = {}) {
     run: (...args) =>
       spawnSync(process.execPath, [KEEL, ...args], {
         encoding: "utf-8",
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: root, CLAUDE_CONFIG_DIR: cfg },
+        // The developer's own KEEL_* would leak in, and a real Hindsight URL makes
+        // doctor probe a homelab from inside a test.
+        env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("KEEL_"))), PATH: `${bin}:${process.env.PATH}`, HOME: root, CLAUDE_CONFIG_DIR: cfg },
       }),
     done: () => rmSync(root, { recursive: true, force: true }),
   };

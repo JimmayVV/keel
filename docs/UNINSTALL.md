@@ -31,8 +31,9 @@ stays, and how to remove each piece if you want it gone:
 Notes:
 
 - The env kill switches (`KEEL_GUARD_OFF`, `KEEL_ACTIVITY_OFF`,
-  `KEEL_TRAILERS_OFF`, `KEEL_INGEST_OFF`, `KEEL_RECALL_OFF`) need no cleanup — with the plugin gone there is nothing
-  for them to switch off.
+  `KEEL_TRAILERS_OFF`, `KEEL_INGEST_OFF`, `KEEL_RECALL_OFF`,
+  `KEEL_HINDSIGHT_RECALL_OFF`) need no cleanup — with the plugin gone there is
+  nothing for them to switch off.
 - `keel migrate` once *deleted* stale keys from `~/.claude.json` (a repair, with
   a backup); there is nothing of keel's inside that file to remove.
 - The Basic Memory engine itself (installed via `uv`) is a separate tool with

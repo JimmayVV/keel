@@ -64,8 +64,10 @@ Claude Code loading the current project's memory index natively. No keel code;
 the floor everything else stands on.
 
 **Query recall**:
-keel's `UserPromptSubmit` hook scoring fact files across projects against the
-prompt and injecting the few that clear a relevance floor, fenced as data.
+keel's `UserPromptSubmit` hooks injecting the few facts that clear a relevance
+floor, fenced as data: one scoring local fact files across projects against the
+prompt, and, on a machine with a Hindsight URL, one asking that bank's recall
+endpoint under a deadline.
 _Avoid_: search, retrieval
 
 **Felt need**:

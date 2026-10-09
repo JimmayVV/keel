@@ -148,6 +148,14 @@ network, and silence on most prompts by design: a memory that volunteers noise
 gets tuned out. `keel recall "<prompt>"` shows what a prompt would receive;
 `KEEL_RECALL_OFF=1` disables it.
 
+On a machine with `KEEL_HINDSIGHT_URL` set, a second hook also asks that
+Hindsight bank, which can match a question worded differently from its answer.
+It skips prompts with fewer than three topic words, keeps only facts above a
+relevance floor, and gives up after 2 seconds; down or slow, it adds nothing.
+Your prompt waits for it, about a second on a warm homelab. Its query sends
+the prompt's text to that host. `keel doctor` reports its latency, and
+`KEEL_HINDSIGHT_RECALL_OFF=1` disables it alone.
+
 ### Commit hygiene
 
 Blocks unwanted attribution trailers in commit messages. Whether you want those in your git

@@ -19,6 +19,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// The developer's own KEEL_* settings leak into every child through process.env
+// — a real KEEL_HINDSIGHT_URL made doctor probe a homelab from inside a test.
+// Each test states the KEEL_* it means.
+const INHERITED = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("KEEL_")));
 const KEEL = join(HERE, "..", "bin", "keel");
 const RECALL_HOOK = join(HERE, "..", "hooks", "memory-recall.mjs");
 
@@ -54,7 +58,7 @@ function doctor(w, extraEnv = {}) {
   return spawnSync(process.execPath, [KEEL, "doctor"], {
     encoding: "utf-8",
     env: {
-      ...process.env,
+      ...INHERITED,
       PATH: `${w.bin}:${process.env.PATH}`,
       HOME: w.root,
       CLAUDE_CONFIG_DIR: w.cfg,
@@ -193,7 +197,7 @@ describe("doctor runs the recall hook instead of assuming it", () => {
     writeFileSync(join(w.root, "broken", "hooks", "memory-recall.mjs"), "throw new ReferenceError('nope is not defined');\n");
     const r = spawnSync(process.execPath, [join(bin, "keel"), "doctor"], {
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, HOME: w.root, CLAUDE_CONFIG_DIR: w.cfg },
+      env: { ...INHERITED, PATH: `${w.bin}:${process.env.PATH}`, HOME: w.root, CLAUDE_CONFIG_DIR: w.cfg },
     });
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stdout, /query recall hook is broken/);
@@ -234,6 +238,7 @@ describe("doctor checks which keel is running", () => {
       // them. A copy without them is a broken install, which is its own test.
       mkdirSync(join(cache, v, "hooks"));
       copyFileSync(RECALL_HOOK, join(cache, v, "hooks", "memory-recall.mjs"));
+      for (const f of ["stopwords.mjs", "hindsight-recall.mjs"]) copyFileSync(join(dirname(RECALL_HOOK), f), join(cache, v, "hooks", f));
     }
     writeFileSync(
       join(w.cfg, "plugins", "installed_plugins.json"),
@@ -247,7 +252,7 @@ describe("doctor checks which keel is running", () => {
   const runFrom = (w, script) =>
     spawnSync(process.execPath, [script, "doctor"], {
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: w.cfg, HOME: w.home },
+      env: { ...INHERITED, PATH: `${w.bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: w.cfg, HOME: w.home },
     });
 
   test("running the installed copy -> green, with the commit", () => {
@@ -333,12 +338,18 @@ describe("doctor asks the Hindsight instance, not the config", () => {
     { id: "keel-reflect@keel", enabled: true },
   ]);
 
-  /** A fake Hindsight: /health and /v1/default/banks, shaped like 0.8.5's answers. */
-  async function stub({ healthy = true, banks = ["personal"] } = {}) {
+  /**
+   * A fake Hindsight: /health and /v1/default/banks shaped like 0.8.5's answers,
+   * and a recall endpoint that answers an empty result list after `recallMs`.
+   */
+  async function stub({ healthy = true, banks = ["personal"], recallMs = 0 } = {}) {
     const { createServer } = await import("node:http");
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
-      if (req.url === "/health") {
+      if (req.method === "POST" && /^\/v1\/default\/banks\/[^/]+\/memories\/recall$/.test(req.url)) {
+        req.resume();
+        setTimeout(() => res.end(JSON.stringify({ results: [] })), recallMs);
+      } else if (req.url === "/health") {
         res.statusCode = healthy ? 200 : 503;
         res.end(JSON.stringify({ status: healthy ? "healthy" : "degraded" }));
       } else if (req.url === "/v1/default/banks") {
@@ -349,7 +360,7 @@ describe("doctor asks the Hindsight instance, not the config", () => {
       }
     });
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
-    return { url: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
+    return { url: `http://127.0.0.1:${server.address().port}`, close: () => { server.closeAllConnections(); server.close(); } };
   }
 
   /**
@@ -359,7 +370,7 @@ describe("doctor asks the Hindsight instance, not the config", () => {
   function doctorAsync(w, extraEnv = {}) {
     return new Promise((resolve) => {
       const child = spawn(process.execPath, [KEEL, "doctor"], {
-        env: { ...process.env, PATH: `${w.bin}:${process.env.PATH}`, HOME: w.root, CLAUDE_CONFIG_DIR: w.cfg, ...extraEnv },
+        env: { ...INHERITED, PATH: `${w.bin}:${process.env.PATH}`, HOME: w.root, CLAUDE_CONFIG_DIR: w.cfg, ...extraEnv },
       });
       let stdout = "";
       child.stdout.on("data", (d) => { stdout += d; });
@@ -412,6 +423,44 @@ describe("doctor asks the Hindsight instance, not the config", () => {
       assert.match(r.stdout, /not a healthy Hindsight/);
     } finally {
       s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("Hindsight recall answering in time -> green, with its latency against the deadline", async () => {
+    const s = await stub();
+    const w = reflectWorld(s.url);
+    try {
+      const r = await doctorAsync(w);
+      assert.equal(r.status, 0, r.stdout);
+      assert.match(r.stdout, /Hindsight recall answers.*\d+ ms of a 2000 ms deadline/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("Hindsight recall slower than its deadline -> problem, with the off switch", async () => {
+    const s = await stub({ recallMs: 1500 });
+    const w = reflectWorld(s.url);
+    try {
+      const r = await doctorAsync(w, { KEEL_HINDSIGHT_RECALL_DEADLINE_MS: "300" });
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, /Hindsight recall timed out at 300 ms/);
+      assert.match(r.stdout, /KEEL_HINDSIGHT_RECALL_OFF=1/);
+    } finally {
+      s.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  test("no Hindsight URL -> recall reported inactive, not a problem", () => {
+    const w = world(enabled);
+    try {
+      const r = doctor(w);
+      assert.match(r.stdout, /Hindsight recall inactive/);
+      assert.doesNotMatch(r.stdout, /Hindsight recall hook is broken/);
+    } finally {
       rmSync(w.root, { recursive: true, force: true });
     }
   });
