@@ -189,6 +189,25 @@ describe("keel search", () => {
     }
   });
 
+  test("a proxy path prefix works, the bank is escaped, and a malformed URL is named", async () => {
+    const s = await stub();
+    try {
+      const ok = await search(["q"], { KEEL_HINDSIGHT_URL: `${s.url}/hindsight/`, KEEL_HINDSIGHT_BANK: "foo/bar" });
+      assert.equal(ok.status, 0, ok.out);
+      assert.equal(s.requests[0].url, "/hindsight/v1/default/banks/foo%2Fbar/memories/recall");
+
+      for (const url of ["hindsight.local:8888", `${s.url}?bank=x`, `${s.url}/#top`]) {
+        const r = await search(["q"], { KEEL_HINDSIGHT_URL: url });
+        assert.equal(r.status, 1, url);
+        assert.match(r.out, /KEEL_HINDSIGHT_URL is not an http\(s\) URL/, url);
+        assert.ok(r.out.includes(url.replace(/\/+$/, "")), `names the value: ${url}`);
+      }
+      assert.equal(s.requests.length, 1, "a malformed URL sends nothing");
+    } finally {
+      s.close();
+    }
+  });
+
   test("each search leaves one audit line, and --stats reads them back", async () => {
     const root = mkdtempSync(join(tmpdir(), "keel-search-log-"));
     const log = join(root, "cfg", "keel", "search.jsonl");

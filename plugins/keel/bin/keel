@@ -829,8 +829,12 @@ function hindsightTarget() {
     console.log(`      fix: keel setup --hindsight-url '<url>' --hindsight-bank '<bank>' --non-interactive\n`);
     return null;
   }
-  if (!/^https?:\/\/[^\s/?#]+$/.test(base) || !/^[A-Za-z0-9_-]+$/.test(bank)) {
-    console.log(`\n  ${c.red("✖")} KEEL_HINDSIGHT_URL or KEEL_HINDSIGHT_BANK is malformed — keel doctor says which\n`);
+  // A path is fine (an instance behind a proxy prefix); a query or fragment
+  // would end up in the middle of the endpoint path. The bank is escaped where
+  // it is used, like everywhere else keel builds a bank URL.
+  if (!/^https?:\/\/[^\s/?#]+(\/[^\s?#]*)?$/.test(base)) {
+    console.log(`\n  ${c.red("✖")} KEEL_HINDSIGHT_URL is not an http(s) URL without a query or fragment: ${base}`);
+    console.log(`      fix: keel setup --hindsight-url '<url>' --non-interactive\n`);
     return null;
   }
   return { base, bank };
@@ -881,7 +885,7 @@ async function cmdSearch(argv) {
   let res;
   let json = null;
   try {
-    res = await fetch(`${base}/v1/default/banks/${bank}/memories/recall`, {
+    res = await fetch(`${base}/v1/default/banks/${encodeURIComponent(bank)}/memories/recall`, {
       method: "POST",
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
       headers: { "content-type": "application/json", accept: "application/json" },
