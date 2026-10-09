@@ -79,6 +79,7 @@ import Base from "../layouts/Base.astro";
         <tr><td>KEEL_TRAILERS_OFF=1</td><td>Turns off the commit signature guard.</td></tr>
         <tr><td>KEEL_INGEST_OFF=1</td><td>Stops stamping web and app content as untrusted.</td></tr>
         <tr><td>KEEL_RECALL_OFF=1</td><td>Stops keel adding memory files to your prompts.</td></tr>
+        <tr><td>KEEL_SEARCH_LOG_OFF=1</td><td>Stops <code>keel search</code> keeping its local log of how long each search took.</td></tr>
         <tr><td>~/.config/keel/policy.json</td><td>Your own policy. It can add rules, or
         <strong>exempt</strong> any rule keel ships with <code>bash.allow</code> or
         <code>paths.allow</code>. keel checks your exemptions first, and they win.</td></tr>

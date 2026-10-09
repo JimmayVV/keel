@@ -61,7 +61,7 @@ allowed and what's forbidden, each with a docs link.
 
 | Plugin | Default | What it does |
 |---|---|---|
-| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and six skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair), `fleet` (put a repo on your CI and merge baseline) |
+| **`keel`** | enabled | Security guard, ingest boundary, commit hygiene, activity log, query recall from your memory files, the `keel` CLI, and seven skills — `week` (what happened), `deck` (what's promised and what's next), `guide` (how all of it works), `setup` (configure this machine), `doctor` (diagnose and repair), `fleet` (put a repo on your CI and merge baseline), `reflect` (reason over a Hindsight bank in your session, citing what it drew on) |
 | **`keel-memory`** | **disabled** | Wires [Basic Memory](https://github.com/basicmachines-co/basic-memory) as a local MCP server over plain markdown |
 | **`keel-reflect`** | **disabled** | Wires a self-hosted [Hindsight](https://hindsight.vectorize.io) bank as an http MCP server — one memory across the machines you point at the same bank. URL and bank come from `keel setup`; see [NETWORKING.md](docs/NETWORKING.md) |
 
@@ -237,6 +237,9 @@ you:
 ```
 keel status    what's active, what's optional, what each option costs   (read-only)
 keel log       your activity records; --json feeds the week skill       (read-only)
+keel search    what a Hindsight bank holds on a query, with sources;
+               feeds the reflect skill. Logs each search's latency
+               locally; --stats reads the log back
 keel doctor    verify prerequisites; exit 1 on problems                 (read-only)
 keel settings  recommended posture, each rule explained and linked
                (--list reads without applying; nothing is written

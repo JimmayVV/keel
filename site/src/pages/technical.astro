@@ -124,15 +124,19 @@ import Base from "../layouts/Base.astro";
 
         <div class="spec">
           <h3 id="cli">the cli</h3>
-          <p><code>keel status · log · recall · doctor · setup · settings · update ·
-          migrate · link</code></p>
+          <p><code>keel status · log · recall · search · doctor · setup · settings ·
+          update · migrate · link</code></p>
           <p>Mostly read-only and flags first. Its writes are idempotent and go only to
           the <code>KEEL_*</code> keys it owns, plus, with your explicit consent, the
           <code>permissions</code> rules <code>keel settings --yes</code> appends. It
           backs up the previous state before its first write. It's on the Bash tool's
           PATH, not your shell's, so in practice Claude runs it for you.
           <code>keel update</code> checks the commit SHA and ignores the version
-          string.</p>
+          string. <code>keel search</code> sends one query to a Hindsight bank's recall
+          endpoint and prints the facts, fenced as data, for the <code>reflect</code>
+          skill to reason over in the session. It logs each search's latency to
+          <code>&lt;config dir&gt;/keel/search.jsonl</code>; <code>--stats</code> reads
+          it back.</p>
         </div>
       </div>
     </div>

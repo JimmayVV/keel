@@ -14,7 +14,7 @@ stays, and how to remove each piece if you want it gone:
 
 | What stays | Where | Remove with |
 |---|---|---|
-| Activity log (your work diary) | `<config dir>/keel/activity/*.jsonl` | `rm -r <config dir>/keel` |
+| Activity log (your work diary), and the `keel search` latency log | `<config dir>/keel/activity/*.jsonl`, `<config dir>/keel/search.jsonl` | `rm -r <config dir>/keel` |
 | Security audit log | same directory (`security-*.jsonl`) | same command |
 | Settings backups keel took before writing | `settings.json.keel-backup`, `settings.local.json.keel-backup`, `~/.claude.json.keel-backup` | `rm` each |
 | `KEEL_*` keys keel setup wrote | `settings.json` under `env` (setups before 2026-09 also used `settings.local.json`) | edit the file, delete the keys |
