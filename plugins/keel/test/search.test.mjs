@@ -233,6 +233,9 @@ describe("keel search", () => {
 
       await search(["again"], { KEEL_HINDSIGHT_URL: ok.url }, { root, extraEnv: { KEEL_SEARCH_LOG_OFF: "1" } });
       assert.equal(readFileSync(log, "utf-8").trim().split("\n").length, 3, "the off switch stops writes");
+      // The skill runs keel from Bash, where the switch lives in settings.json, not the shell.
+      await search(["again"], { KEEL_HINDSIGHT_URL: ok.url, KEEL_SEARCH_LOG_OFF: "1" }, { root });
+      assert.equal(readFileSync(log, "utf-8").trim().split("\n").length, 3, "the switch works from settings.json");
     } finally {
       ok.close();
       broken.close();
@@ -243,13 +246,16 @@ describe("keel search", () => {
   test("--stats counts only the window: 30 days by default, --days N narrows it", async () => {
     const root = mkdtempSync(join(tmpdir(), "keel-search-days-"));
     const daysAgo = (d) => new Date(Date.now() - d * 86_400_000).toISOString();
-    const rec = (d) => JSON.stringify({ at: daysAgo(d), bank: "personal", level: "facts", budget: "mid", ms: 1000, outcome: "ok", query: `q${d}` });
+    // The 2-day-old query carries a window-retitle sequence, as a pasted question could.
+    const rec = (d) => JSON.stringify({ at: daysAgo(d), bank: "personal", level: "facts", budget: "mid", ms: 1000, outcome: "ok", query: d === 2 ? "q2\x1b]0;pwned\x07" : `q${d}` });
     try {
       mkdirSync(join(root, "cfg", "keel"), { recursive: true });
       writeFileSync(join(root, "cfg", "keel", "search.jsonl"), `${[rec(2), rec(10), rec(40)].join("\n")}\n`);
       const all = await search(["--stats"], {}, { root });
       assert.match(all.out, /last 30 day\(s\)/);
       assert.match(all.out, /personal · facts · mid: 2 search\(es\)/);
+      assert.match(all.out, /q2\]0;pwned/, "the logged query is listed");
+      assert.doesNotMatch(all.out, /\x07|\x1b\]/, "without its control characters");
       const week = await search(["--stats", "--days", "7"], {}, { root });
       assert.match(week.out, /last 7 day\(s\)/);
       assert.match(week.out, /personal · facts · mid: 1 search\(es\)/);
