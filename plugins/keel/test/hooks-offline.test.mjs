@@ -2,7 +2,8 @@
 //
 // On 2026-10-09 a UserPromptSubmit hook was built here that sent prompts to a
 // Hindsight instance; the instance slowed the same afternoon, and every topical
-// prompt would have paid for it. The hook was stashed and ADR-0003 recorded the
+// prompt would have paid for it. The hook (branch archive/hindsight-recall-hook,
+// which this test fails against) was dropped and ADR-0003 recorded the
 // rule, but nothing checked it. Per ADR-0001 a test is admitted when its failure
 // class has occurred here; this is that class.
 //

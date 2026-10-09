@@ -134,6 +134,23 @@ function effectiveEnv() {
 }
 
 /**
+ * A KEEL_* key for keel's own behaviour. keel runs from a shell, or from a
+ * skill's Bash, where settings.json's `env` block is not in process.env, so a
+ * bare process.env read misses the documented place to set a key. settings.json
+ * wins over the shell, as it does for hooks (see recallProbe). env.test.mjs
+ * keeps direct process.env reads of these keys out of this file.
+ */
+function keelEnv(name) {
+  return { ...process.env, ...effectiveEnv() }[name];
+}
+
+/** A positive integer from a KEEL_* key, or the default. */
+function keelMs(name, fallback) {
+  const n = Number(keelEnv(name));
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/**
  * Merge owned keys into settings.env, preserving everything else. Backs the file
  * up once per run before the first write: this is the user's config, and keel is
  * a guest in it.
@@ -256,7 +273,7 @@ const INCLUDED = [
  * A short deadline, because doctor runs on machines whose homelab is off
  * and "unreachable" is a normal answer there, not a hang.
  */
-const HINDSIGHT_TIMEOUT_MS = Number(process.env.KEEL_HINDSIGHT_TIMEOUT_MS || 4000);
+const hindsightTimeoutMs = () => keelMs("KEEL_HINDSIGHT_TIMEOUT_MS", 4000);
 
 /** The reason a fetch failed, as a code a human can act on, not "TypeError". */
 function netReason(e) {
@@ -265,7 +282,7 @@ function netReason(e) {
 
 async function hindsightGet(base, path) {
   const url = `${base.replace(/\/+$/, "")}${path}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(HINDSIGHT_TIMEOUT_MS), headers: { accept: "application/json" } });
+  const r = await fetch(url, { signal: AbortSignal.timeout(hindsightTimeoutMs()), headers: { accept: "application/json" } });
   const text = await r.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* non-JSON body is reported as text */ }
@@ -329,7 +346,7 @@ async function hindsightEnsureBank(base) {
       method: "PUT",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ name: bank }),
-      signal: AbortSignal.timeout(HINDSIGHT_TIMEOUT_MS),
+      signal: AbortSignal.timeout(hindsightTimeoutMs()),
     });
     return r.ok
       ? `bank "${bank}" created · undo: curl -X DELETE '${url}'`
@@ -535,7 +552,7 @@ function hostOf(url) {
 // ── commands ────────────────────────────────────────────────────────────────
 
 function activityDir() {
-  return process.env.KEEL_ACTIVITY_DIR?.trim() || join(CONFIG_DIR, "keel", "activity");
+  return keelEnv("KEEL_ACTIVITY_DIR")?.trim() || join(CONFIG_DIR, "keel", "activity");
 }
 
 /** Every activity record, newest first. Cheap: these files are small and monthly. */
@@ -780,9 +797,7 @@ const SEARCH_LOG = join(CONFIG_DIR, "keel", "search.jsonl");
 const printable = (s) => String(s ?? "").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
 
 function logSearch(record) {
-  // Merged like the other KEEL_* keys: the skill runs keel from Bash, where
-  // settings.json's env block is not in process.env.
-  if ({ ...process.env, ...effectiveEnv() }.KEEL_SEARCH_LOG_OFF === "1") return;
+  if (keelEnv("KEEL_SEARCH_LOG_OFF") === "1") return;
   try {
     mkdirSync(dirname(SEARCH_LOG), { recursive: true });
     appendFileSync(SEARCH_LOG, `${JSON.stringify({ at: new Date().toISOString(), ...record })}\n`);
@@ -795,7 +810,7 @@ function searchStats(days) {
   try { lines = readFileSync(SEARCH_LOG, "utf-8").split("\n").filter(Boolean); } catch { /* no log yet */ }
   const since = Date.now() - days * 86_400_000;
   const recs = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } })
-    .filter((r) => r && Date.parse(r.at) >= since);
+    .filter((r) => r && typeof r.at === "string" && Number.isFinite(r.ms) && typeof r.outcome === "string" && Date.parse(r.at) >= since);
   console.log(`\n  ${c.bold("keel search")} ${c.dim(`· last ${days} day(s) · ${SEARCH_LOG.replace(homedir(), "~")}`)}`);
   if (!recs.length) {
     console.log(`  ${c.dim("no searches recorded")}\n`);
@@ -804,7 +819,7 @@ function searchStats(days) {
   const pct = (xs, p) => xs[Math.min(xs.length - 1, Math.floor((xs.length - 1) * p))];
   const groups = new Map();
   for (const r of recs) {
-    const key = `${r.bank} · ${r.level} · ${r.budget}`;
+    const key = printable(`${r.bank} · ${r.level} · ${r.budget}`);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(r);
   }
@@ -824,15 +839,13 @@ function searchStats(days) {
   return 0;
 }
 
-const SEARCH_TIMEOUT_MS = Number(process.env.KEEL_SEARCH_TIMEOUT_MS) > 0 ? Number(process.env.KEEL_SEARCH_TIMEOUT_MS) : 60_000;
 const SEARCH_TEXT_CHARS = 600;
 const SEARCH_PASSAGE_CHARS = 4000;
 
 /** URL and bank, or null after saying what is wrong with them. */
 function hindsightTarget() {
-  const env = { ...process.env, ...effectiveEnv() };
-  const base = String(env.KEEL_HINDSIGHT_URL ?? "").trim().replace(/\/+$/, "");
-  const bank = String(env.KEEL_HINDSIGHT_BANK ?? "").trim() || "personal";
+  const base = String(keelEnv("KEEL_HINDSIGHT_URL") ?? "").trim().replace(/\/+$/, "");
+  const bank = String(keelEnv("KEEL_HINDSIGHT_BANK") ?? "").trim() || "personal";
   if (!base) {
     console.log(`\n  ${c.red("✖")} no Hindsight configured on this machine`);
     console.log(`      fix: keel setup --hindsight-url '<url>' --hindsight-bank '<bank>' --non-interactive\n`);
@@ -888,6 +901,7 @@ async function cmdSearch(argv) {
     ? { query, types: ["observation"], budget, max_tokens: maxTokens ?? 5000, include: { entities: null } }
     : { query, types: ["world", "experience"], budget, max_tokens: maxTokens ?? 2048, include: { entities: null, chunks: { max_tokens: 1000 } } };
 
+  const timeoutMs = keelMs("KEEL_SEARCH_TIMEOUT_MS", 60_000);
   const started = Date.now();
   const level = observations ? "observations" : "facts";
   const record = (outcome, extra = {}) => logSearch({ bank, level, budget, ms: Date.now() - started, outcome, query, ...extra });
@@ -896,7 +910,7 @@ async function cmdSearch(argv) {
   try {
     res = await fetch(`${base}/v1/default/banks/${encodeURIComponent(bank)}/memories/recall`, {
       method: "POST",
-      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     });
@@ -905,7 +919,7 @@ async function cmdSearch(argv) {
   } catch (e) {
     const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
     record(timedOut ? "timeout" : "unreachable");
-    console.log(`\n  ${c.red("✖")} ${timedOut ? `no answer after ${Math.round(SEARCH_TIMEOUT_MS / 1000)}s` : `unreachable at ${base} (${netReason(e)})`}\n`);
+    console.log(`\n  ${c.red("✖")} ${timedOut ? `no answer after ${+(timeoutMs / 1000).toFixed(1)}s` : `unreachable at ${printable(base)} (${printable(netReason(e))})`}\n`);
     return 1;
   }
   const secs = ((Date.now() - started) / 1000).toFixed(1);
@@ -913,13 +927,13 @@ async function cmdSearch(argv) {
     record(res.status !== 200 ? `http-${res.status}` : "bad-response");
     const detail = typeof json?.detail === "string" ? json.detail : JSON.stringify(json?.detail ?? json);
     console.log(`\n  ${c.red("✖")} recall answered ${res.status} after ${secs}s`);
-    console.log(`      ${detail.slice(0, 400)}\n`);
+    console.log(`      ${printable(detail).slice(0, 400)}\n`);
     return 1;
   }
 
   const results = json.results;
   record("ok", { results: results.length });
-  console.log(`\n  ${c.dim(`bank "${bank}" · ${level} · ${results.length} result(s), most relevant first · ${secs}s`)}`);
+  console.log(`\n  ${c.dim(`bank "${printable(bank)}" · ${level} · ${results.length} result(s), most relevant first · ${secs}s`)}`);
   if (!results.length) {
     console.log(`  ${c.dim("nothing matched")}\n`);
     return 0;
@@ -1289,7 +1303,7 @@ async function cmdDoctor() {
    * files is a different fact from "recall is healthy" over three hundred.
    */
   {
-    const recallOff = { ...process.env, ...effectiveEnv() }.KEEL_RECALL_OFF === "1";
+    const recallOff = keelEnv("KEEL_RECALL_OFF") === "1";
     const r = recallOff ? null : recallProbe("keel doctor recall self-check probe");
     if (recallOff) {
       console.log(`  ${c.dim("○")} query recall off ${c.dim("(KEEL_RECALL_OFF=1)")}`);

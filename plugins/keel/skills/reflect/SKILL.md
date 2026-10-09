@@ -88,8 +88,9 @@ events, `happened`. Results arrive most relevant first, not in time order.
   and for each source checked in step 4, whether it is present, gone, or drifted.
 - One line naming what was searched and came back empty, when that shaped the answer.
 - A last line with the cost of the retrieval: how many searches ran, the seconds
-  each `keel search` header reported, summed, and any that timed out. Every search
-  is also logged locally; `keel search --stats` shows the history.
+  each `keel search` header reported, summed, and any that timed out. `keel search`
+  also logs each search locally unless `KEEL_SEARCH_LOG_OFF=1`; `keel search --stats`
+  shows the history.
 
 Done when every claim in the answer traces to a fact under **Drew on**, or is
 labelled an inference or an estimate.

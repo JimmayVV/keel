@@ -136,7 +136,13 @@ import Base from "../layouts/Base.astro";
           endpoint and prints the facts, fenced as data, for the <code>reflect</code>
           skill to reason over in the session. It logs each search's latency to
           <code>&lt;config dir&gt;/keel/search.jsonl</code>; <code>--stats</code> reads
-          it back.</p>
+          it back. The bank is <code>KEEL_HINDSIGHT_URL</code> and
+          <code>KEEL_HINDSIGHT_BANK</code>, which <code>keel setup</code> writes. A search
+          waits <code>KEEL_SEARCH_TIMEOUT_MS</code> for an answer (60 seconds by
+          default), and <code>keel doctor</code>'s Hindsight checks wait
+          <code>KEEL_HINDSIGHT_TIMEOUT_MS</code> (4 seconds). The CLI reads its
+          <code>KEEL_*</code> keys from <code>settings.json</code>'s <code>env</code>
+          block as well as the shell, and the block wins.</p>
         </div>
       </div>
     </div>

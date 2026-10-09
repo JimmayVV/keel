@@ -141,17 +141,66 @@ describe("keel search", () => {
     }
   });
 
-  test("a fact cannot drive the terminal: control characters are dropped", async () => {
-    // \x1b]0;…\x07 retitles the window, \x1b[2J clears the screen.
+  test("nothing from outside can drive the terminal: control characters are dropped on every path", async () => {
+    // \x1b]0;…\x07 retitles the window, \x1b[2J clears the screen. Every
+    // string keel search prints that it did not write itself carries one.
     const hostile = "before\x1b]0;pwned\x07\x1b[2Jafter";
-    const s = await stub({ body: { results: [{ text: hostile, chunk_id: "c" }], chunks: { c: { text: hostile } } } });
+    const controls = /\x07|\x1b\]|\x1b\[2J/;
+    const ok = await stub({
+      body: {
+        results: [{ text: hostile, document_id: hostile, chunk_id: "c" }],
+        chunks: { c: { text: hostile } },
+      },
+    });
+    const broken = await stub({ status: 500, body: { detail: hostile } });
+    const odd = await stub({ status: 200, body: { detail: hostile } });
     try {
-      const r = await search(["q"], { KEEL_HINDSIGHT_URL: s.url });
+      const r = await search(["q"], { KEEL_HINDSIGHT_URL: ok.url, KEEL_HINDSIGHT_BANK: `bank${hostile}` });
       assert.equal(r.status, 0, r.out);
-      assert.doesNotMatch(r.out, /\x07|\x1b\]|\x1b\[2J/);
+      assert.doesNotMatch(r.out, controls, "facts, sources, passages, bank name");
       assert.match(r.out, /before\]0;pwned\[2Jafter/, "the text survives, inert");
+
+      for (const s of [broken, odd]) {
+        const e = await search(["q"], { KEEL_HINDSIGHT_URL: s.url });
+        assert.equal(e.status, 1, e.out);
+        assert.doesNotMatch(e.out, controls, "an error body");
+        assert.match(e.out, /before\]0;pwned/);
+      }
     } finally {
-      s.close();
+      ok.close();
+      broken.close();
+      odd.close();
+    }
+  });
+
+  test("a network failure is a timeout or unreachable, said and logged", async () => {
+    const root = mkdtempSync(join(tmpdir(), "keel-search-net-"));
+    const log = join(root, "cfg", "keel", "search.jsonl");
+    // A server that accepts and never answers, and a port nothing listens on.
+    const silent = createServer(() => {});
+    await new Promise((r) => silent.listen(0, "127.0.0.1", r));
+    const gone = createServer();
+    await new Promise((r) => gone.listen(0, "127.0.0.1", r));
+    const goneUrl = `http://127.0.0.1:${gone.address().port}`;
+    await new Promise((r) => gone.close(r));
+    try {
+      // The timeout is set in settings.json, where the reflect skill's runs see it.
+      const slow = await search(["q"], { KEEL_HINDSIGHT_URL: `http://127.0.0.1:${silent.address().port}`, KEEL_SEARCH_TIMEOUT_MS: "300" }, { root });
+      assert.equal(slow.status, 1, slow.out);
+      assert.match(slow.out, /no answer after 0.3s/);
+
+      const down = await search(["q"], { KEEL_HINDSIGHT_URL: goneUrl }, { root });
+      assert.equal(down.status, 1, down.out);
+      assert.match(down.out, /unreachable at http:\/\/127\.0\.0\.1:\d+ \(ECONNREFUSED\)/);
+
+      const outcomes = readFileSync(log, "utf-8").trim().split("\n").map((l) => JSON.parse(l).outcome);
+      assert.deepEqual(outcomes, ["timeout", "unreachable"]);
+      const st = await search(["--stats"], {}, { root });
+      assert.match(st.out, /none answered · 1 timeout, 1 unreachable/);
+    } finally {
+      silent.closeAllConnections();
+      silent.close();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
@@ -268,5 +317,20 @@ describe("keel search", () => {
     const r = await search(["--stats"]);
     assert.equal(r.status, 0, r.out);
     assert.match(r.out, /no searches recorded/);
+  });
+
+  test("--stats skips a torn or hand-edited line instead of crashing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "keel-search-torn-"));
+    const good = JSON.stringify({ at: new Date().toISOString(), bank: "personal", level: "facts", budget: "mid", ms: 900, outcome: "ok", query: "fine" });
+    try {
+      mkdirSync(join(root, "cfg", "keel"), { recursive: true });
+      const torn = ['{"at": "2026-10-0', JSON.stringify({ at: new Date().toISOString() }), JSON.stringify({ at: 5, ms: "x", outcome: null }), "null", good];
+      writeFileSync(join(root, "cfg", "keel", "search.jsonl"), `${torn.join("\n")}\n`);
+      const r = await search(["--stats"], {}, { root });
+      assert.equal(r.status, 0, r.out);
+      assert.match(r.out, /personal · facts · mid: 1 search\(es\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

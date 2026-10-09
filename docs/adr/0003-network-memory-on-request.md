@@ -15,8 +15,10 @@ the damage. They did not remove it, because a passive call is paid on every turn
 whether or not the answer was wanted.
 
 Decision: **a hook makes no network call.** Memory that needs a server (search,
-reflection, anything another machine holds) runs only when the user asks: the
-`reflect` skill, or a `keel` command. Recall from local files stays passive
+reflection, anything another machine holds) runs only when a session chooses to:
+the `reflect` skill, whose description scopes it to questions about the user's own
+memory, or a `keel` command. The first half is code, checked by a test (below);
+the second is a skill description a model follows. Recall from local files stays passive
 (`memory-recall.mjs`), because a file read on the same machine has no failure mode
 that costs a turn.
 
@@ -29,9 +31,9 @@ fragility on every turn, even when the server is your own. Either reason alone
 decides it.
 
 Cost: semantic recall (a question asked in words the note does not use) happens
-only when asked for, never unprompted. The stashed hook (`git stash list`,
-"hindsight-recall-hook") holds the measured gates if a local embedding model ever
-makes an on-box version possible. That would be a file read by another name, and
+only when a session runs the `reflect` skill or `keel search`, never from a hook. The branch `archive/hindsight-recall-hook`
+(never to be merged) holds the dropped hook and its measured gates, in case a local
+embedding model ever makes an on-box version possible. That would be a file read by another name, and
 this decision would not cover it.
 
 `hooks-offline.test.mjs` checks the hook source: every `hooks.json` command runs

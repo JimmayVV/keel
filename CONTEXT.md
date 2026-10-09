@@ -71,8 +71,8 @@ prompt and injecting the few that clear a relevance floor, fenced as data.
 _Avoid_: search (that is bank search), retrieval
 
 **Bank search**:
-`keel search` — one request to a Hindsight bank, made only when asked, by the user
-or the `reflect` skill. A server answers it, so no hook runs it (ADR-0003).
+`keel search` — one request to a Hindsight bank, made when the user or the `reflect`
+skill runs it. A server answers it, so no hook runs it (ADR-0003).
 _Avoid_: recall — that is the hook above, though the Hindsight endpoint it calls is named recall
 
 **Felt need**:
