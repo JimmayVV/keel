@@ -141,6 +141,20 @@ describe("keel search", () => {
     }
   });
 
+  test("a fact cannot drive the terminal: control characters are dropped", async () => {
+    // \x1b]0;…\x07 retitles the window, \x1b[2J clears the screen.
+    const hostile = "before\x1b]0;pwned\x07\x1b[2Jafter";
+    const s = await stub({ body: { results: [{ text: hostile, chunk_id: "c" }], chunks: { c: { text: hostile } } } });
+    try {
+      const r = await search(["q"], { KEEL_HINDSIGHT_URL: s.url });
+      assert.equal(r.status, 0, r.out);
+      assert.doesNotMatch(r.out, /\x07|\x1b\]|\x1b\[2J/);
+      assert.match(r.out, /before\]0;pwned\[2Jafter/, "the text survives, inert");
+    } finally {
+      s.close();
+    }
+  });
+
   test("nothing matched is a clean exit", async () => {
     const s = await stub();
     try {

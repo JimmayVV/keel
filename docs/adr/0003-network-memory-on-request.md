@@ -34,5 +34,6 @@ only when asked for, never unprompted. The stashed hook (`git stash list`,
 makes an on-box version possible. That would be a file read by another name, and
 this decision would not cover it.
 
-Today no file under `plugins/keel/hooks/` imports an HTTP client or calls `fetch`.
-Nothing tests for that yet.
+`hooks-offline.test.mjs` checks the hook source: every `hooks.json` command runs
+node on a file in `hooks/`, and no hook names an HTTP client or spawns curl or wget.
+It reads source text, so a call assembled at runtime would get past it.
