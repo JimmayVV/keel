@@ -15,6 +15,7 @@
 // site page, or in INTERNAL below with its reason. Hooks are exempt from the
 // first check: Claude Code puts settings.json's env into a hook's environment.
 
+import "./hermetic.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -78,4 +79,14 @@ test("every KEEL_* key the code reads is documented, or listed as internal", () 
 
   const stale = Object.keys(INTERNAL).filter((n) => !names.has(n));
   assert.deepEqual(stale, [], "INTERNAL lists keys the code no longer reads");
+});
+
+// The suite inherited the developer's KEEL_* keys until hermetic.mjs; a test
+// file that skips it inherits them again.
+test("every test file imports hermetic.mjs before anything else", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const f of readdirSync(here).filter((f) => f.endsWith(".test.mjs"))) {
+    const [first] = readFileSync(join(here, f), "utf8").match(/^import .*$/m) ?? [];
+    assert.equal(first, 'import "./hermetic.mjs";', `${f} must import ./hermetic.mjs first`);
+  }
 });

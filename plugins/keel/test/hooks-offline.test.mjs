@@ -13,6 +13,7 @@
 // source text, so it does not see a network call assembled at runtime, a git
 // subcommand that reaches a remote, or code a hook loads from outside hooks/.
 
+import "./hermetic.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";

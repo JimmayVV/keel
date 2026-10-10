@@ -16,6 +16,7 @@
  * spawnSync would block the event loop the stub answers on.
  */
 
+import "./hermetic.mjs";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -28,7 +29,7 @@ import { dirname, join } from "node:path";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KEEL = join(HERE, "..", "bin", "keel");
 
-async function stub({ status = 200, body } = {}) {
+async function stub({ status = 200, body, delayMs = 0 } = {}) {
   const requests = [];
   const server = createServer((req, res) => {
     let raw = "";
@@ -37,7 +38,7 @@ async function stub({ status = 200, body } = {}) {
       requests.push({ method: req.method, url: req.url, body: raw ? JSON.parse(raw) : null });
       res.statusCode = status;
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify(body ?? { results: [] }));
+      setTimeout(() => res.end(JSON.stringify(body ?? { results: [] })), delayMs);
     });
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -201,6 +202,24 @@ describe("keel search", () => {
       silent.closeAllConnections();
       silent.close();
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // KEEL_SEARCH_TIMEOUT_MS came from the shell as Number(...) > 0, so "1.5"
+  // aborted every search after a millisecond and a settings.json value was
+  // never read. keelMs takes a positive integer or the default.
+  test("a timeout that is not a positive whole number of ms falls back to the default", async () => {
+    const s = await stub({ delayMs: 100 });
+    try {
+      for (const bad of ["abc", "0", "-5", "1.5", ""]) {
+        const r = await search(["q"], { KEEL_HINDSIGHT_URL: s.url, KEEL_SEARCH_TIMEOUT_MS: bad });
+        assert.equal(r.status, 0, `KEEL_SEARCH_TIMEOUT_MS=${JSON.stringify(bad)}: ${r.out}`);
+        assert.match(r.out, /nothing matched/);
+      }
+      const shell = await search(["q"], { KEEL_HINDSIGHT_URL: s.url }, { extraEnv: { KEEL_SEARCH_TIMEOUT_MS: "1.5" } });
+      assert.equal(shell.status, 0, shell.out);
+    } finally {
+      s.close();
     }
   });
 

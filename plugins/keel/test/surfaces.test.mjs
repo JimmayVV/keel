@@ -16,6 +16,7 @@
 // a path assembled at runtime from parts would slip past it — so the doc's
 // "Enforcing it" section says exactly that and no more.
 
+import "./hermetic.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
