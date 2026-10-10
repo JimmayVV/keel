@@ -11,6 +11,7 @@
 // `keel <subcommand>` invocations and *.mjs files. Prose about removed things in
 // the past tense doesn't match either pattern, so history stays writable.
 
+import "./hermetic.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -192,4 +193,72 @@ test("no site page carries a stale version token", () => {
       assert.equal(tok, want, `site/src/pages/${f} says ${tok}; the plugin is ${want}`);
     }
   }
+});
+
+// PR #19 added the seventh skill and had to change "six" to "seven" in four
+// places by hand; the review caught that nothing would notice the eighth. A
+// count of a directory is a derivable fact (ADR-0002), so where prose states
+// one, this checks it against the directory. Same for the two hand-kept lists
+// on the site that mirror code: the CLI line and the off-switch table.
+const skillDirs = readdirSync(join(root, "plugins", "keel", "skills")).filter((d) =>
+  existsSync(join(root, "plugins", "keel", "skills", d, "SKILL.md")),
+);
+const pagesDir = join(root, "site", "src", "pages");
+const pages = [
+  join(root, "README.md"),
+  ...readdirSync(pagesDir).map((f) => join(pagesDir, f)),
+];
+
+test("every count of skills or ADRs in the README and on the site matches the directory", () => {
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen"];
+  const adrs = readdirSync(join(root, "docs", "adr")).filter((f) => /^\d{4}-.*\.md$/.test(f));
+  // "two short ADRs" outlived ADR-0003 on the technical page the same way.
+  const counted = [
+    [/^(?:skills|ways to ask)$/i, skillDirs.length, "plugins/keel/skills"],
+    [/ADRs$/i, adrs.length, "docs/adr"],
+  ];
+  const count = new RegExp(`\\b(${words.join("|")}|\\d+) ((?:[a-z]+ )?ADRs|skills|ways to ask)\\b`, "gi");
+  let skillCounts = 0;
+  for (const file of pages) {
+    for (const [phrase, n, noun] of readFileSync(file, "utf8").matchAll(count)) {
+      const [, want, dir] = counted.find(([re]) => re.test(noun));
+      if (dir === "plugins/keel/skills") skillCounts++;
+      const said = /\d/.test(n) ? Number(n) : words.indexOf(n.toLowerCase());
+      assert.equal(said, want, `${file.slice(root.length + 1)} says "${phrase}"; ${dir} has ${want}`);
+    }
+  }
+  assert.ok(skillCounts > 0, "no skill count found — if the prose dropped them, drop that row");
+});
+
+test("the skills page has a section for every skill keel ships", () => {
+  const page = readFileSync(join(pagesDir, "skills.astro"), "utf8");
+  const headed = new Set([...page.matchAll(/<h3[^>]*>([a-z-]+):/g)].map((m) => m[1]));
+  assert.deepEqual([...headed].sort(), [...skillDirs].sort(), "skills.astro headings vs plugins/keel/skills");
+});
+
+test("the technical page lists exactly the commands bin/keel dispatches", () => {
+  const page = readFileSync(join(pagesDir, "technical.astro"), "utf8");
+  const [, line] = page.match(/id="cli"[\s\S]*?<code>keel ([a-z ·\n-]+)<\/code>/) ?? [];
+  assert.ok(line, "technical.astro lost its CLI line");
+  const listed = line.split("·").map((s) => s.trim()).filter(Boolean);
+  const dispatched = [...commands].filter((c) => c !== "help");
+  assert.deepEqual(listed.sort(), dispatched.sort(), "technical.astro CLI line vs bin/keel dispatch");
+});
+
+test("the install page's off-switch table has every *_OFF key the code reads", () => {
+  const sources = [
+    join(root, "plugins", "keel", "bin", "keel"),
+    ...readdirSync(join(root, "plugins", "keel", "hooks"))
+      .filter((f) => f.endsWith(".mjs"))
+      .map((f) => join(root, "plugins", "keel", "hooks", f)),
+  ];
+  const inCode = new Set(
+    sources.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/\bKEEL_[A-Z_]+_OFF\b/g)].map((m) => m[0])),
+  );
+  const table = new Set(
+    [...readFileSync(join(pagesDir, "install.astro"), "utf8").matchAll(/<td>(KEEL_[A-Z_]+_OFF)=1<\/td>/g)].map((m) => m[1]),
+  );
+  assert.ok(inCode.size > 0, "found no *_OFF keys in the code");
+  assert.deepEqual([...table].sort(), [...inCode].sort(), "install.astro off-switch table vs the code");
 });

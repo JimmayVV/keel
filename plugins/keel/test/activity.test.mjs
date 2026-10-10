@@ -9,10 +9,11 @@
  *      because sync safety depends on one-writer-per-file
  */
 
+import "./hermetic.mjs";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -102,6 +103,30 @@ describe("keel log read-back", () => {
     assert.equal(out.counts.records, 1, "only the activity record should count");
     assert.ok(out.records.every((rec) => rec.kind), "no kind-less ghost records");
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// keel log read KEEL_ACTIVITY_DIR from the shell only, so on a machine that
+// set it in settings.json (where the hooks read it) the CLI looked in the
+// default directory and reported nothing.
+describe("keel log finds the diary where the hooks write it", () => {
+  test("KEEL_ACTIVITY_DIR set only in settings.json", () => {
+    const root = mkdtempSync(join(tmpdir(), "keel-act-cfg-"));
+    const dir = join(root, "diary");
+    const cfg = join(root, "cfg");
+    mkdirSync(dir);
+    mkdirSync(cfg);
+    writeFileSync(join(cfg, "settings.json"), JSON.stringify({ env: { KEEL_ACTIVITY_DIR: dir } }));
+    writeFileSync(
+      join(dir, "2026-07-testbox.jsonl"),
+      JSON.stringify({ kind: "ask", ts: new Date().toISOString(), session: "s1", device: "testbox", cwd: "/x", repo: "demo", branch: "main", worktree: null, text: "a real question" }) + "\n",
+    );
+    const r = spawnSync(process.execPath, [KEEL, "log", "--days", "1", "--json"], {
+      encoding: "utf-8",
+      env: { ...process.env, CLAUDE_CONFIG_DIR: cfg },
+    });
+    assert.equal(JSON.parse(r.stdout).counts.records, 1, r.stderr);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

@@ -10,6 +10,7 @@
  * these tests neither require nor touch a real Claude Code install.
  */
 
+import "./hermetic.mjs";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
@@ -367,9 +368,9 @@ describe("doctor asks the Hindsight instance, not the config", () => {
     });
   }
 
-  function reflectWorld(url, bank) {
+  function reflectWorld(url, bank, extra = {}) {
     const w = world(enabled);
-    const env = { KEEL_MEMORY_HOME: join(w.root, "notes"), KEEL_HINDSIGHT_URL: url };
+    const env = { KEEL_MEMORY_HOME: join(w.root, "notes"), KEEL_HINDSIGHT_URL: url, ...extra };
     if (bank) env.KEEL_HINDSIGHT_BANK = bank;
     writeFileSync(join(w.cfg, "settings.json"), JSON.stringify({ env }));
     return w;
@@ -413,6 +414,29 @@ describe("doctor asks the Hindsight instance, not the config", () => {
     } finally {
       s.close();
       rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  // KEEL_HINDSIGHT_TIMEOUT_MS was Number(value || 4000): "abc" threw a
+  // RangeError out of AbortSignal.timeout and crashed doctor, and "0" aborted
+  // every request, so a healthy instance read as unreachable.
+  test("a timeout that is not a positive whole number of ms falls back, in settings.json or the shell", async () => {
+    const s = await stub();
+    try {
+      for (const bad of ["abc", "0"]) {
+        for (const where of ["settings", "shell"]) {
+          const w = reflectWorld(s.url, undefined, where === "settings" ? { KEEL_HINDSIGHT_TIMEOUT_MS: bad } : {});
+          try {
+            const r = await doctorAsync(w, where === "shell" ? { KEEL_HINDSIGHT_TIMEOUT_MS: bad } : {});
+            assert.equal(r.status, 0, `${where} ${JSON.stringify(bad)}: ${r.stdout}`);
+            assert.match(r.stdout, /bank "personal" · 42 facts/);
+          } finally {
+            rmSync(w.root, { recursive: true, force: true });
+          }
+        }
+      }
+    } finally {
+      s.close();
     }
   });
 

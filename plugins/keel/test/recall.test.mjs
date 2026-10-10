@@ -10,6 +10,7 @@
  *      hostile corpus all still return continue:true
  */
 
+import "./hermetic.mjs";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

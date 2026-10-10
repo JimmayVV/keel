@@ -24,6 +24,8 @@ Lives in auto-memory and correctly stays behind.
 **Observation**:
 An append-only record of what happened — the activity log. Never stale, only old.
 Distinct from a conclusion drawn from it, which is a decided fact and contestable.
+Hindsight's "observations" (what `keel search --observations` returns) are
+conclusions in this vocabulary; the flag keeps the API's name.
 
 **Logic**:
 Reusable behavior. Its carrier is software — a package or template — never memory.
@@ -66,7 +68,12 @@ the floor everything else stands on.
 **Query recall**:
 keel's `UserPromptSubmit` hook scoring fact files across projects against the
 prompt and injecting the few that clear a relevance floor, fenced as data.
-_Avoid_: search, retrieval
+_Avoid_: search (that is bank search), retrieval
+
+**Bank search**:
+`keel search` — one request to a Hindsight bank, made when the user or the `reflect`
+skill runs it. A server answers it, so no hook runs it (ADR-0003).
+_Avoid_: recall — that is the hook above, though the Hindsight endpoint it calls is named recall
 
 **Felt need**:
 A need that has occurred at least once, here, to the user — not in someone else's

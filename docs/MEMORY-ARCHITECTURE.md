@@ -290,6 +290,14 @@ state.
 - Two engine bridges — `keel-memory` (Basic Memory, local) and `keel-reflect`
   (Hindsight over http; URL and bank from `settings.json`, bank created by
   `keel setup`, health and bank checked by `keel doctor`)
+- Reflect in the session — the `reflect` skill searches a Hindsight bank with
+  `keel search` (Hindsight's recall endpoint: facts with their source passages,
+  or consolidated observations) and reasons over the results with the session's
+  own model, following an adaptation of Hindsight's reflect prompt. The
+  instance's reflect endpoint, which runs that loop on the instance's model and
+  API key, is not called. Each search appends its query, outcome, and latency
+  to `<config dir>/keel/search.jsonl`; `keel search --stats` summarises it, and
+  `KEEL_SEARCH_LOG_OFF=1` stops the writes.
 
 **Not built:**
 
